@@ -1,0 +1,3333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catan — Island of the Pass-and-Play</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --sea:#11414c; --sea-deep:#0b2c34; --sea-glow:#1c5e6c;
+    --parchment:#f3e7cd; --parchment-2:#ece0c2; --parchment-edge:#d8c49a;
+    --pc-band:#f1e8c9; /* light beige for player-card body, stats and ports areas */
+    --pc-head:#ddc99c; /* one step darker beige for the player-card header band */
+    --wood:#6b4f2e; --wood-dark:#3a2a1a; --ink:#2c2117; --ink-soft:#5d4e3c;
+    --gold:#e0b84a; --gold-deep:#b8902c;
+    --t-wood:#2f6b3c; --t-brick:#bf6138; --t-sheep:#a8c459; --t-wheat:#e3b23c; --t-ore:#74808d; --t-desert:#d9c08c;
+    --red-num:#b23a2e; --robber:#2b2b2b;
+    --p0:#c0392b; --p1:#2f74b5; --p2:#df8a2c; --p3:#efe9dc;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{
+    font-family:'Outfit',system-ui,-apple-system,sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(120% 100% at 30% 0%, var(--sea-glow) 0%, var(--sea) 42%, var(--sea-deep) 100%);
+    min-height:100%;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    /* Horizontal inset is a bit wider than a scrollbar so the page's vertical
+       scrollbar falls over the teal body background to the right of the panel
+       instead of clipping it; a matching left inset keeps things balanced.
+       box-sizing:border-box (set globally) means this never adds horizontal scroll. */
+    width:100%; margin:0; padding:18px 38px; gap:20px;
+    display:flex; align-items:stretch;
+    height:100vh; height:100dvh; overflow:hidden;
+  }
+  /* ---------- Board ---------- */
+  .board-card{
+    flex:1 1 auto; min-width:0;
+    display:flex; flex-direction:column;
+    background:linear-gradient(160deg,#0f3a44,#0c3038);
+    border:1px solid rgba(224,184,74,.25);
+    border-radius:14px; padding:10px;
+    box-shadow:var(--shadow);
+  }
+  /* SVG fills the board area, scaling to fit within both width and height
+     (preserveAspectRatio="xMidYMid meet" on the element keeps it centred,
+     never cut off and never taller than its box). */
+  svg#board{display:block; width:100%; height:auto; flex:1 1 0; min-height:0;}
+  .hex-poly{stroke:rgba(20,30,20,.45); stroke-width:1.4; cursor:default;}
+  .tok-circle{fill:var(--parchment); stroke:#9c8554; stroke-width:1.4;}
+  .tok-text{font-family:'Cinzel',Georgia,serif; font-weight:700; text-anchor:middle; dominant-baseline:central; fill:var(--ink);}
+  .tok-text.red{fill:var(--red-num);}
+  .res-label{font-family:'Outfit',sans-serif; font-weight:600; font-size:9.5px; letter-spacing:1.5px;
+    text-anchor:middle; fill:rgba(28,22,14,.55); text-transform:uppercase; pointer-events:none;}
+  .road-line{stroke-linecap:round;}
+  .piece{stroke:var(--wood-dark); stroke-width:1.6; stroke-linejoin:round;}
+  .cand{cursor:pointer;}
+  .cand-dot{fill:rgba(224,184,74,.85); stroke:#fff; stroke-width:1.6;}
+  .cand-road{stroke:var(--gold); stroke-width:7; stroke-linecap:round; stroke-dasharray:2 6; opacity:.95;}
+  .cand-hex{fill:rgba(224,184,74,.18); stroke:var(--gold); stroke-width:3; stroke-dasharray:6 5;}
+  .cand-ring{fill:none; stroke:var(--gold); stroke-width:3.5;}
+  @media (prefers-reduced-motion: no-preference){
+    .pulse{animation:pulse 1.25s ease-in-out infinite;}
+    @keyframes pulse{0%,100%{opacity:.55;} 50%{opacity:1;}}
+    /* ---- Final-polish animations (quick, non-blocking) ---- */
+    .dice.rolling .die{animation:diceTumble .4s ease;}
+    @keyframes diceTumble{
+      0%{transform:translateY(0) rotate(0);}
+      20%{transform:translateY(-3px) rotate(-13deg);}
+      45%{transform:translateY(1px) rotate(11deg);}
+      70%{transform:translateY(-1px) rotate(-6deg);}
+      100%{transform:translateY(0) rotate(0);}
+    }
+    .piece-pop{animation:piecePop .28s cubic-bezier(.34,1.56,.64,1); transform-box:fill-box; transform-origin:center bottom;}
+    @keyframes piecePop{0%{transform:scale(0);} 70%{transform:scale(1.15);} 100%{transform:scale(1);}}
+    .road-draw{stroke-dasharray:48; animation:roadDraw .3s ease-out;}
+    @keyframes roadDraw{from{stroke-dashoffset:48;} to{stroke-dashoffset:0;}}
+    .robber-slide{transition:transform .35s ease;}
+    .chip.bump{animation:chipBump .35s ease;}
+    @keyframes chipBump{0%{transform:scale(1);} 35%{transform:scale(1.26);} 100%{transform:scale(1);}}
+    #gameOverModal.ease-in{animation:sbIn .4s cubic-bezier(.2,.8,.3,1);}
+    @keyframes sbIn{0%{opacity:0; transform:translateY(16px) scale(.97);} 100%{opacity:1; transform:none;}}
+  }
+  .compass text{font-family:'Cinzel',serif; fill:rgba(224,184,74,.7); font-size:11px; text-anchor:middle; dominant-baseline:central;}
+
+  /* ---------- View tabs (Board / Stats) ---------- */
+  .view-tabs{display:flex; justify-content:center; padding:2px 2px 8px;}
+  .view-tabs .seg-group{border-color:rgba(224,184,74,.4);}
+  .view-tabs .seg{background:rgba(255,255,255,.06); color:var(--parchment);
+    border-right-color:rgba(224,184,74,.25); padding:6px 16px; letter-spacing:.5px;}
+  .view-tabs .seg:hover:not(.sel){background:rgba(224,184,74,.14);}
+  .view-tabs .seg.sel{background:linear-gradient(180deg,var(--gold),var(--gold-deep)); color:var(--wood-dark); font-weight:700;}
+
+  /* ---------- Stats view ---------- */
+  .stats-view{padding:4px 2px 8px; flex:1 1 0; min-height:0; overflow-y:auto;}
+  .stats-block{background:linear-gradient(175deg,var(--parchment),var(--parchment-2));
+    border:1px solid var(--parchment-edge); border-radius:12px; padding:16px 18px; margin-bottom:14px; box-shadow:var(--shadow);}
+  .stats-block:last-child{margin-bottom:0;}
+  .stats-h{font-family:'Cinzel',Georgia,serif; font-weight:700; letter-spacing:2px; font-size:16px;
+    color:var(--wood-dark); text-transform:uppercase; margin:0 0 4px;}
+  .stats-sub{font-size:11.5px; color:var(--ink-soft); margin-bottom:14px;}
+  .stats-sub b{font-family:'Cinzel',serif; color:var(--wood-dark); font-weight:700; font-size:13px;}
+  .stats-empty{font-size:12.5px; color:var(--ink-soft); font-style:italic; text-align:center; padding:24px 0;}
+  /* Roll-frequency histogram */
+  .hist{display:flex; align-items:flex-end; gap:6px; height:172px;}
+  .hist-col{flex:1 1 0; display:flex; flex-direction:column; align-items:center; height:100%;}
+  .hist-count{font-family:'Cinzel',serif; font-weight:700; font-size:11.5px; color:var(--wood-dark); line-height:1.5;}
+  .hist-bar-area{position:relative; width:100%; flex:1 1 auto; display:flex; align-items:flex-end;}
+  .hist-bar{width:100%; background:linear-gradient(180deg,var(--gold),var(--gold-deep));
+    border:1px solid var(--gold-deep); border-bottom:0; border-radius:4px 4px 0 0; min-height:2px;}
+  .hist-bar.seven{background:linear-gradient(180deg,#c98a4a,#a85f2b); border-color:#a85f2b;}
+  .hist-exp{position:absolute; left:-3px; right:-3px; border-top:2px dashed var(--red-num); pointer-events:none;}
+  .hist-num{font-family:'Cinzel',serif; font-weight:700; font-size:12px; color:var(--ink-soft); margin-top:5px;}
+  .hist-legend{display:flex; align-items:center; gap:7px; font-size:10.5px; color:var(--ink-soft); margin-top:11px;}
+  .hist-legend .ln{display:inline-block; width:20px; border-top:2px dashed var(--red-num);}
+  /* Resource production */
+  .prod-chips{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;}
+  .prod-chip{display:flex; align-items:center; gap:5px; font-size:13px; font-weight:700; color:#fff;
+    border-radius:7px; padding:4px 9px; line-height:1.4;}
+  .prod-chip .pc-lab{font-weight:500; font-size:8.5px; letter-spacing:.5px; opacity:.85; text-transform:uppercase;}
+  .prod-table{width:100%; border-collapse:collapse; font-size:12px;}
+  .prod-table th, .prod-table td{padding:6px 4px; text-align:center;}
+  .prod-table th{font-size:9px; letter-spacing:.5px; text-transform:uppercase; color:var(--ink-soft);
+    font-weight:700; border-bottom:1px solid rgba(107,79,46,.25);}
+  .prod-table th.who, .prod-table td.who{text-align:left;}
+  .prod-table td{border-bottom:1px solid rgba(107,79,46,.12);}
+  .prod-table tbody tr:last-child td{border-bottom:0;}
+  .prod-table .num{font-family:'Cinzel',serif; font-weight:700; color:var(--wood-dark);}
+  .prod-table .num.zero{color:var(--ink-soft); font-weight:400; opacity:.5;}
+  .prod-who{display:inline-flex; align-items:center; gap:7px; font-weight:600; color:var(--ink);}
+  .prod-who .swatch{width:14px; height:14px; border-radius:4px; border:1.5px solid var(--wood-dark); flex:0 0 auto;}
+  /* Per-player stat cards */
+  .pstat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(232px,1fr)); gap:12px;}
+  .pstat-card{border:1px solid rgba(107,79,46,.22); border-radius:10px; padding:12px 13px 13px;
+    background:rgba(255,255,255,.32);}
+  .pstat-head{display:flex; align-items:center; gap:8px; padding-bottom:9px; margin-bottom:9px;
+    border-bottom:1px solid rgba(107,79,46,.20);}
+  .pstat-head .swatch{width:16px; height:16px; border-radius:5px; border:1.5px solid var(--wood-dark); flex:0 0 auto;}
+  .pstat-name{font-weight:600; font-size:13.5px; color:var(--ink);}
+  .pstat-vp{margin-left:auto; font-family:'Cinzel',serif; font-weight:700; font-size:15px; color:var(--wood-dark);
+    background:rgba(107,79,46,.12); border-radius:20px; padding:2px 11px;}
+  .pstat-vp small{font-family:'Outfit',sans-serif; font-weight:500; font-size:9px; letter-spacing:.5px;}
+  .pstat-sec{margin-top:10px;}
+  .pstat-sec:first-child{margin-top:0;}
+  .pstat-sl{font-size:8.5px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-soft);
+    font-weight:700; margin-bottom:5px;}
+  .pstat-rows{display:flex; flex-direction:column; gap:3px;}
+  .pstat-row{display:flex; align-items:baseline; gap:8px; font-size:11px; color:var(--ink-soft);}
+  .pstat-row .pr-k{flex:1 1 auto;}
+  .pstat-row .pr-v{font-family:'Cinzel',serif; font-weight:700; font-size:12px; color:var(--wood-dark); white-space:nowrap;}
+  .pstat-row .pr-v.muted{color:var(--ink-soft); font-weight:400; opacity:.55;}
+  .pstat-row .pr-v.lucky{color:#3f7d3a;} .pstat-row .pr-v.unlucky{color:#9c3b30;}
+  .pstat-award{font-size:7.5px;}
+
+  /* ---------- Panel ---------- */
+  .panel{
+    flex:0 0 410px; width:410px;
+    background:linear-gradient(175deg,var(--parchment),var(--parchment-2));
+    border:1px solid var(--parchment-edge);
+    border-radius:14px; box-shadow:var(--shadow);
+    overflow:hidden auto;   /* scroll internally instead of stretching the page */
+  }
+  .panel-head{
+    position:sticky; top:0; z-index:5;
+    padding:16px 18px 12px; border-bottom:1px solid rgba(107,79,46,.22);
+    display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(180deg, rgba(107,79,46,.10), transparent), var(--parchment);
+  }
+  .title{font-family:'Cinzel',Georgia,serif; font-weight:700; font-size:26px; letter-spacing:5px; margin:0; color:var(--wood-dark); text-align:center;}
+  /* ---- Connection / room indicator (top of side panel) ---- */
+  .conn-bar{display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    padding:7px 18px; font-size:10.5px; color:var(--ink-soft);
+    border-bottom:1px solid rgba(107,79,46,.18); background:rgba(107,79,46,.05);}
+  .conn-dot{width:8px; height:8px; border-radius:50%; flex:0 0 auto;
+    background:#b54b3a; box-shadow:0 0 0 2px rgba(181,75,58,.18);}
+  .conn-bar.online .conn-dot{background:#3a8a4a; box-shadow:0 0 0 2px rgba(58,138,74,.18);}
+  .conn-room{font-weight:600; color:var(--ink); letter-spacing:.3px;}
+  .conn-room code{font-family:'Outfit',monospace; background:rgba(107,79,46,.12);
+    padding:1px 6px; border-radius:5px; letter-spacing:1px;}
+  .conn-who{margin-left:auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  /* ---- Controls bar (sound left, Rules / New game right) ---- */
+  .controls-bar{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
+  .sound-ctl{display:flex; align-items:center; gap:8px;}
+  .ctl-right{display:flex; align-items:center; gap:8px; margin-left:auto;}
+  .btn-ghost{
+    font-family:'Outfit',sans-serif; font-size:11px; letter-spacing:.5px; cursor:pointer;
+    background:transparent; color:var(--ink-soft); border:1px solid rgba(107,79,46,.35);
+    border-radius:8px; padding:6px 10px;
+  }
+  .btn-ghost:hover{background:rgba(107,79,46,.10);}
+  .section{padding:14px 18px;}
+  .section + .section{border-top:1px solid rgba(107,79,46,.16);}
+
+  /* Dice */
+  .dice-row{display:flex; align-items:center; gap:14px;}
+  .dice{display:flex; gap:10px;}
+  .die{width:42px; height:42px; background:#fbf4e4; border:1px solid #c9b489; border-radius:9px;
+    display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+    padding:6px; box-shadow:inset 0 -3px 6px rgba(0,0,0,.06);}
+  .pip{width:7px; height:7px; border-radius:50%; align-self:center; justify-self:center; background:transparent;}
+  .pip.on{background:var(--ink);}
+  .sum{font-family:'Cinzel',serif; font-weight:700; font-size:30px; color:var(--wood-dark); min-width:34px; text-align:center;}
+  .sum small{display:block; font-family:'Outfit',sans-serif; font-weight:500; font-size:9px; letter-spacing:1.5px; color:var(--ink-soft); text-transform:uppercase;}
+
+  /* Bank supply */
+  .bank{display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:12px;}
+  .bank-lab{font-size:9px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-soft); font-weight:600; margin-right:1px;}
+  .bank-chip{display:flex; align-items:center; gap:4px; font-size:11px; font-weight:700; color:#fff;
+    border-radius:6px; padding:2px 6px; line-height:1.4;}
+  .bank-chip.low{box-shadow:0 0 0 1.5px #9c3b30;}
+  .bank-chip.out{opacity:.45;}
+  .bank-chip .bc-lab{font-weight:500; font-size:8.5px; letter-spacing:.5px; opacity:.85; text-transform:uppercase;}
+
+  /* Players */
+  .players{display:flex; flex-direction:column; gap:11px;}
+  .swatch{width:18px; height:18px; border-radius:5px; border:1.5px solid var(--wood-dark); flex:0 0 auto;}
+
+  /* Redesigned player card: light-beige body with a darker header band */
+  .pcard{border-radius:14px; background:var(--pc-band); padding:7px;
+    display:flex; flex-direction:column; gap:7px;
+    border:1px solid rgba(107,79,46,.22); box-shadow:0 1px 3px rgba(0,0,0,.10);}
+  .pcard.active{border:2.5px solid var(--pcol); box-shadow:0 1px 4px rgba(0,0,0,.12);}
+
+  /* 1) Header band — still-darker beige panel: colour swatch + name (left), badges, VP (right) */
+  .pc-head{display:flex; align-items:center; gap:7px; padding:7px 10px;
+    background:var(--pc-head); border-radius:10px; color:var(--ink);}
+  .pc-swatch{width:17px; height:17px; border-radius:5px; border:1.5px solid var(--wood-dark); flex:0 0 auto;}
+  .pc-name{font-family:'Cinzel',serif; font-weight:700; font-size:15px; letter-spacing:1.5px;
+    text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; color:var(--ink);}
+  .pc-badges{display:flex; align-items:center; gap:5px; flex:0 0 auto;}
+  .pc-badge{display:inline-flex; align-items:center; gap:2px; font-size:9.5px; font-weight:700; color:var(--wood-dark);
+    line-height:1; padding:2px 6px 2px 4px; border:1px solid var(--gold-deep); background:rgba(224,184,74,.32);
+    border-radius:11px; white-space:nowrap;}
+  .pc-badge svg{width:13px; height:13px;}
+  .pc-vp{margin-left:auto; flex:0 0 auto; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; width:34px; height:34px; border-radius:50%; border:1.5px solid var(--wood-dark);
+    background:rgba(107,79,46,.12); color:var(--wood-dark);}
+  .pc-vp .n{font-family:'Cinzel',serif; font-weight:700; font-size:15px; line-height:1;}
+  .pc-vp .l{font-size:7px; font-weight:600; letter-spacing:.5px; line-height:1; margin-top:1px;}
+
+  /* 2) Resources — five separate rounded colour tiles on the light-beige body */
+  .pc-res{display:grid; grid-template-columns:repeat(5,1fr); gap:6px;}
+  .pc-cell{display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 3px 7px; min-width:0; border-radius:11px;}
+  .pc-cell .rl{font-size:8.5px; font-weight:600; letter-spacing:.4px; text-transform:uppercase; opacity:.9;}
+  .pc-cell .rn{font-family:'Cinzel',serif; font-weight:700; font-size:16px; line-height:1;}
+  .pc-cell.bump{animation:chipBump .35s ease;}
+
+  /* 3) Player stats — darker-beige panel */
+  .pc-stats{display:flex; padding:7px 6px; background:var(--pc-band); border-radius:10px;}
+  .pc-stat{flex:1 1 0; display:inline-flex; align-items:center; justify-content:center; gap:4px;
+    font-size:10.5px; color:var(--ink-soft); min-width:0;}
+  .pc-stat + .pc-stat{border-left:1px solid rgba(107,79,46,.18);}
+  .pc-stat svg{width:15px; height:15px; flex:0 0 auto; opacity:.85;}
+  .pc-stat b{font-family:'Cinzel',serif; color:var(--wood-dark); font-weight:700; font-size:12.5px;}
+
+  /* 4) Ports — same beige body, with a thin clipped divider above it */
+  .pc-ports{position:relative; display:flex; align-items:flex-start; gap:8px; padding:7px 10px; background:var(--pc-band); border-radius:10px; flex-wrap:wrap;}
+  .pc-ports::before{content:""; position:absolute; top:-4px; left:14px; right:14px; height:1px;
+    background:rgba(214,193,150,.9); border-radius:1px;}
+  .pc-ports-lab{font-size:8.5px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-soft);
+    font-weight:700; padding-top:4px; flex:0 0 auto;}
+  .pc-tokens{display:flex; flex-wrap:wrap; gap:5px; flex:1 1 auto;}
+  .pc-token{display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:600;
+    color:var(--ink-soft); background:rgba(255,255,255,.45); border:1px solid rgba(107,79,46,.28);
+    border-radius:20px; padding:2px 8px; white-space:nowrap;}
+  .pc-token svg{width:12px; height:12px; flex:0 0 auto; opacity:.85;}
+  .pc-token .dot{width:9px; height:9px; border-radius:50%; flex:0 0 auto; border:1px solid rgba(0,0,0,.22);}
+
+  /* Actions */
+  .prompt{font-size:13px; line-height:1.5; color:var(--ink); background:rgba(107,79,46,.10);
+    border-left:3px solid var(--gold-deep); border-radius:6px; padding:9px 11px; min-height:38px;}
+  .actions{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px;}
+  .btn{font-family:'Outfit',sans-serif; font-weight:600; font-size:12.5px; cursor:pointer;
+    border:1px solid var(--wood-dark); border-radius:9px; padding:9px 8px; color:var(--parchment);
+    background:linear-gradient(180deg,#7a5a34,#5e4527); transition:transform .05s, filter .15s;}
+  .btn:hover:not(:disabled){filter:brightness(1.08);}
+  .btn:active:not(:disabled){transform:translateY(1px);}
+  .btn:disabled{opacity:.4; cursor:not-allowed;}
+  .btn.primary{background:linear-gradient(180deg,var(--gold),var(--gold-deep)); color:var(--wood-dark); border-color:var(--gold-deep);}
+  .btn.span2{grid-column:span 2;}
+  .btn .cost{display:block; font-weight:400; font-size:9px; letter-spacing:.3px; opacity:.85; margin-top:1px;}
+  .btn.cancel{background:transparent; color:#9c3b30; border-color:#9c3b30;}
+  .bot-tip{background:transparent; border:0; color:var(--ink-soft); font-weight:500; cursor:default; font-size:12px;
+    text-align:center; padding:4px 0;}
+
+  /* Auto-play bar */
+  #autoSection{display:none;}
+  .autobar{display:flex; flex-direction:column; gap:10px;}
+  .mode-line{display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap;}
+  .mode-left{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .speed-line{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  /* Manual mode greys out & disables the whole Speed line, including the Pause button (same look as a disabled Start button) */
+  .autobar.manual .speed-line{opacity:.4; pointer-events:none;}
+  .seg-group{display:inline-flex; border:1px solid rgba(107,79,46,.35); border-radius:8px; overflow:hidden;}
+  .seg{font-family:'Outfit',sans-serif; font-size:11px; cursor:pointer; background:rgba(255,255,255,.30);
+    border:0; padding:6px 11px; color:var(--ink); border-right:1px solid rgba(107,79,46,.22);}
+  .seg:last-child{border-right:0;}
+  .seg:hover:not(.sel){background:rgba(107,79,46,.10);}
+  .seg.sel{background:linear-gradient(180deg,var(--gold),var(--gold-deep)); color:var(--wood-dark); font-weight:700;}
+  #pauseBtn{border:1px solid rgba(107,79,46,.35); border-radius:8px; margin-left:auto;}
+  .spd-lab{font-size:9px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-soft);}
+  .auto-status{font-size:10.5px; color:var(--ink-soft); font-style:italic; text-align:right; margin-left:auto;}
+  .watch-row{display:flex; align-items:center; gap:8px; margin:2px 0 14px; font-size:12.5px; color:var(--ink); cursor:pointer;}
+  .watch-row input{width:16px; height:16px; cursor:pointer;}
+
+  /* Replay / DVR */
+  #replaySection{display:none;}
+  .replay{display:flex; flex-direction:column; gap:8px;}
+  .replay.disabled{opacity:.55;}
+  .replay-top{display:flex; align-items:center; gap:8px;}
+  .replay-count{flex:1; font-size:11px; font-weight:700; color:var(--ink); letter-spacing:.2px;}
+  #replayLive{border:1px solid rgba(107,79,46,.35); border-radius:8px;}
+  .replay-slider{width:100%; margin:0; accent-color:var(--gold-deep); cursor:pointer;}
+  .replay-slider:disabled{cursor:not-allowed;}
+  .replay-ctl{display:flex; flex-wrap:wrap; align-items:center; gap:6px;}
+  .replay-ctl .seg{border:1px solid rgba(107,79,46,.35); border-radius:8px; min-width:32px; text-align:center;}
+  .replay-ctl .seg-group{border:1px solid rgba(107,79,46,.35); border-radius:8px;}
+  .replay-ctl .seg-group .seg{border:0; border-right:1px solid rgba(107,79,46,.22); border-radius:0; min-width:0;}
+  .replay-ctl .seg-group .seg:last-child{border-right:0;}
+  .replay-label{min-height:1.5em; font-size:11px; line-height:1.5; color:var(--ink-soft); font-style:italic;}
+
+  /* Log */
+  .log{font-size:11.5px; line-height:1.6; color:var(--ink-soft); max-height:108px; overflow-y:auto;}
+  .log div{padding:1px 0;}
+  .log .now{color:var(--ink); font-weight:600;}
+
+  /* Overlay */
+  .overlay{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:20px;
+    background:radial-gradient(120% 100% at 50% 0%, rgba(28,94,108,.6), rgba(11,44,52,.82)); z-index:50;}
+  .overlay.hidden{display:none;}
+  .modal{background:linear-gradient(175deg,var(--parchment),var(--parchment-2)); border:1px solid var(--parchment-edge);
+    border-radius:16px; box-shadow:var(--shadow); padding:30px 34px; max-width:430px; text-align:center;}
+  .modal h1{font-family:'Cinzel',serif; font-weight:700; letter-spacing:6px; font-size:38px; margin:0 0 4px; color:var(--wood-dark);}
+  .modal .sub{font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--ink-soft); margin-bottom:18px;}
+  .modal p{font-size:13px; line-height:1.6; color:var(--ink); margin:0 auto 20px; max-width:330px;}
+  .choose{display:flex; gap:10px; justify-content:center; margin-bottom:8px;}
+  .choose .btn{padding:13px 18px; font-size:14px;}
+  .winner-swatch{display:inline-block; width:14px; height:14px; border-radius:4px; border:1.5px solid var(--wood-dark); vertical-align:middle; margin-right:6px;}
+
+  /* ---------- Setup screen ---------- */
+  .setup{text-align:left;}
+  .setup-row{display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:14px;}
+  .setup-lab{font-family:'Cinzel',serif; font-weight:600; font-size:13px; letter-spacing:2px;
+    text-transform:uppercase; color:var(--wood-dark); flex:0 0 auto;}
+  .count-btns{display:flex; gap:7px;}
+  .count-btn{font-family:'Outfit',sans-serif; font-weight:600; font-size:14px; cursor:pointer;
+    width:38px; height:38px; border-radius:9px; border:1px solid rgba(107,79,46,.35);
+    background:rgba(255,255,255,.35); color:var(--ink);}
+  .count-btn:hover{background:rgba(107,79,46,.12);}
+  .count-btn.sel{background:linear-gradient(180deg,var(--gold),var(--gold-deep));
+    color:var(--wood-dark); border-color:var(--gold-deep);}
+  .seats{display:flex; flex-direction:column; gap:8px; margin-bottom:16px;}
+  .seat{display:flex; align-items:center; gap:9px;}
+  .seat.placeholder{visibility:hidden;}
+  .seat-num{font-family:'Cinzel',serif; font-weight:700; font-size:12px; color:var(--ink-soft);
+    width:16px; flex:0 0 auto; text-align:right;}
+  .seat-name{flex:1 1 auto; min-width:0; font-family:'Outfit',sans-serif; font-size:13px; color:var(--ink);
+    border:1px solid rgba(107,79,46,.35); border-radius:8px; padding:8px 10px; background:rgba(255,255,255,.55);}
+  .seat-name:focus{outline:none; border-color:var(--gold-deep); box-shadow:0 0 0 2px rgba(224,184,74,.3);}
+  .seat-name.invalid{border-color:#9c3b30;}
+  .swatches{display:flex; gap:5px; flex:0 0 auto;}
+  .sw{width:22px; height:22px; border-radius:6px; border:1.5px solid var(--wood-dark); cursor:pointer;
+    padding:0; position:relative; transition:transform .08s;}
+  .sw:hover:not(:disabled){transform:scale(1.12);}
+  .sw.sel{box-shadow:0 0 0 2px var(--parchment), 0 0 0 4px var(--gold-deep);}
+  .sw:disabled{cursor:not-allowed; opacity:.28;}
+  .start-row{display:flex; align-items:center; gap:10px;}
+  .start-warn{flex:1 1 auto; min-width:0; text-align:right; font-family:'Outfit',sans-serif;
+    font-size:11px; letter-spacing:.3px; color:#9c3b30; opacity:.85;}
+  #startBtn{display:block; width:fit-content; margin-left:auto; flex:0 0 auto;}
+  #startBtn:disabled{opacity:.4; cursor:not-allowed;}
+
+  /* ---------- Trade dialog ---------- */
+  .harbour-line{font-size:10px; color:var(--ink-soft); margin-top:5px; letter-spacing:.3px;}
+  .trade-modal{width:430px; max-width:92vw; text-align:left; padding:22px 24px;}
+  .trade-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:6px;}
+  .trade-head h2{font-family:'Cinzel',serif; font-weight:700; letter-spacing:2px; font-size:22px; margin:0; color:var(--wood-dark);}
+  .trade-who{font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-soft); white-space:nowrap;}
+  .trade-intro{font-size:12.5px; line-height:1.5; color:var(--ink); margin:0 0 14px; max-width:none;}
+  .trade-menu{display:flex; flex-direction:column; gap:9px; margin-bottom:14px;}
+  .trade-opt{display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left;
+    font-family:'Outfit',sans-serif; cursor:pointer; padding:11px 14px; border-radius:10px;
+    border:1px solid rgba(107,79,46,.35); background:rgba(255,255,255,.4); color:var(--ink);}
+  .trade-opt:hover:not(:disabled){background:rgba(224,184,74,.18); border-color:var(--gold-deep);}
+  .trade-opt:disabled{opacity:.45; cursor:not-allowed;}
+  .to-title{font-weight:700; font-size:14px; color:var(--wood-dark); letter-spacing:.5px;}
+  .to-sub{font-size:11px; color:var(--ink-soft);}
+  .trade-block{margin-bottom:12px;}
+  .tb-lab{font-size:10.5px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-soft); font-weight:600; margin-bottom:6px;}
+  .res-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:6px;}
+  .res-cell{display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer;
+    border:2px solid transparent; border-radius:8px; padding:7px 2px 5px; background:var(--rc);
+    font-family:'Outfit',sans-serif;}
+  .res-cell:disabled{opacity:.32; cursor:not-allowed;}
+  .res-cell.sel{border-color:var(--wood-dark); box-shadow:0 0 0 2px var(--gold);}
+  .rc-name{font-weight:700; font-size:11px;}
+  .rc-sub{font-size:8px; opacity:.92; line-height:1.15; text-align:center;}
+  .trade-summary{font-size:12.5px; color:var(--ink); background:rgba(107,79,46,.10);
+    border-left:3px solid var(--gold-deep); border-radius:6px; padding:8px 11px; margin-bottom:14px;}
+  .trade-ports{font-size:11px; color:var(--ink-soft); margin-bottom:12px;}
+  .trade-foot{display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;}
+  .trade-foot .btn{padding:9px 14px;}
+  .partners{display:flex; flex-wrap:wrap; gap:7px;}
+  .partner{display:flex; align-items:center; gap:6px; cursor:pointer; font-family:'Outfit',sans-serif;
+    font-size:12px; font-weight:600; color:var(--ink); padding:6px 10px; border-radius:8px;
+    border:1px solid rgba(107,79,46,.35); background:rgba(255,255,255,.4);}
+  .partner:hover{background:rgba(224,184,74,.18);}
+  .partner.sel{border-color:var(--gold-deep); background:rgba(224,184,74,.22); box-shadow:0 0 0 1px var(--gold-deep) inset;}
+  .pswatch{width:14px; height:14px; border-radius:4px; border:1.5px solid var(--wood-dark);}
+  .pcards{font-size:10px; color:var(--ink-soft);}
+  .steppers{display:grid; grid-template-columns:repeat(5,1fr); gap:6px;}
+  .stepper{display:flex; flex-direction:column; align-items:center; gap:4px;}
+  .st-swatch{width:100%; text-align:center; font-size:9.5px; font-weight:700; border-radius:6px; padding:3px 0;}
+  .st-ctl{display:flex; align-items:center; gap:4px;}
+  .st-ctl button{width:20px; height:20px; border-radius:6px; border:1px solid rgba(107,79,46,.4);
+    background:rgba(255,255,255,.6); cursor:pointer; font-size:13px; line-height:1; color:var(--ink);}
+  .st-ctl button:disabled{opacity:.3; cursor:not-allowed;}
+  .st-val{font-family:'Cinzel',serif; font-weight:700; font-size:13px; min-width:14px; text-align:center;}
+  .st-max{font-size:9px; color:var(--ink-soft);}
+  .stepper-hint{font-size:12px; color:var(--ink-soft); font-style:italic; padding:6px 0;}
+  .offer-card{background:rgba(255,255,255,.4); border:1px solid rgba(107,79,46,.25); border-radius:10px;
+    padding:12px 14px; margin-bottom:16px;}
+  .offer-row{display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:4px 0;}
+  .offer-side{font-weight:700;}
+  .offer-arrow{text-align:center; color:var(--gold-deep); font-size:16px;}
+
+  /* ---------- Narrow screens (tablet portrait / phone) ---------- */
+  @media (max-width:900px){
+    /* Stack: board on top, panel below, whole page scrolls. */
+    .wrap{flex-direction:column; height:auto; min-height:100dvh; overflow:visible;}
+    .board-card{flex:0 0 auto;}
+    /* Board scales to the available width and sizes its own height. */
+    svg#board{flex:0 0 auto; height:auto;}
+    .stats-view{flex:0 0 auto; min-height:0; overflow-y:visible;}
+    .panel{flex:1 1 auto; width:100%; overflow:visible;}
+    .panel-head{position:static;}
+  }
+
+  /* ---------- Game-Over Scoreboard ---------- */
+  .sb-modal{max-width:900px;width:min(94vw,900px);max-height:88vh;overflow-y:auto;
+    text-align:left;padding:28px 30px 24px;}
+  .sb-title{font-family:'Cinzel',serif;font-weight:700;letter-spacing:5px;font-size:30px;
+    margin:0 0 2px;color:var(--wood-dark);text-align:center;}
+  .sb-sub{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-soft);
+    text-align:center;margin-bottom:22px;}
+  .sb-h{font-family:'Cinzel',serif;font-weight:700;letter-spacing:2px;font-size:16px;
+    color:var(--wood-dark);text-transform:uppercase;margin:22px 0 12px;
+    padding-bottom:7px;border-bottom:1px solid var(--parchment-edge);}
+  .sb-h:first-of-type{margin-top:0;}
+  .sb-rank-list{display:flex;flex-direction:column;gap:8px;margin-bottom:4px;}
+  .sb-rank-row{display:flex;align-items:center;gap:12px;padding:10px 14px;
+    border-radius:10px;border:1px solid rgba(107,79,46,.18);background:rgba(255,255,255,.3);}
+  .sb-rank-row.sb-winner{border-color:var(--gold-deep);background:rgba(224,184,74,.18);
+    box-shadow:0 0 0 1.5px var(--gold-deep) inset;}
+  .sb-rank-num{font-family:'Cinzel',serif;font-weight:700;font-size:18px;color:var(--ink-soft);
+    width:30px;text-align:center;flex:0 0 auto;}
+  .sb-rank-row.sb-winner .sb-rank-num{color:var(--gold-deep);}
+  .sb-rank-info{flex:1 1 auto;display:flex;flex-direction:column;gap:5px;min-width:0;}
+  .sb-rank-name-row{display:flex;align-items:center;gap:8px;}
+  .sb-rank-name{font-weight:700;font-size:14px;}
+  .sb-vp-breakdown{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
+  .sb-vp-chip{font-size:10.5px;padding:2px 7px;border-radius:10px;
+    background:rgba(107,79,46,.10);border:1px solid rgba(107,79,46,.15);color:var(--ink-soft);}
+  .sb-vp-chip.special{background:rgba(107,79,46,.18);color:var(--wood-dark);font-weight:600;}
+  .sb-vp-chip.vp-card{background:rgba(224,184,74,.3);border-color:var(--gold-deep);
+    color:var(--wood-dark);font-weight:700;}
+  .sb-vp-total{font-family:'Cinzel',serif;font-weight:700;font-size:22px;color:var(--wood-dark);
+    background:rgba(107,79,46,.12);border-radius:20px;padding:4px 16px;flex:0 0 auto;white-space:nowrap;}
+  .sb-rank-row.sb-winner .sb-vp-total{
+    background:linear-gradient(180deg,var(--gold),var(--gold-deep));color:var(--wood-dark);}
+  .sb-awards-grid{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:4px;}
+  .sb-award-card{display:flex;flex-direction:column;gap:3px;padding:11px 14px;
+    border-radius:10px;border:1px solid rgba(107,79,46,.18);background:rgba(255,255,255,.3);
+    flex:1 1 140px;min-width:140px;}
+  .sb-award-icon{font-size:20px;margin-bottom:2px;}
+  .sb-award-label{font-family:'Cinzel',serif;font-weight:700;font-size:10px;letter-spacing:1px;
+    text-transform:uppercase;color:var(--wood-dark);}
+  .sb-award-who{font-size:13px;font-weight:600;color:var(--ink);}
+  .sb-award-detail{font-size:10.5px;color:var(--ink-soft);}
+  .sb-stats-wrap .stats-block{margin-bottom:12px;}
+  .sb-footer{text-align:center;padding-top:16px;border-top:1px solid rgba(107,79,46,.16);margin-top:8px;}
+
+  /* ---------- Sound controls ---------- */
+  #soundBtn{font-size:15px; line-height:1; padding:7px 9px;}
+  #soundBtn.muted{color:#9c3b30; border-color:rgba(156,59,48,.55); background:rgba(156,59,48,.10); opacity:.95;}
+  .vol-slider{width:64px; height:4px; accent-color:var(--wood); cursor:pointer; flex:0 0 auto;}
+  .vol-slider:disabled{opacity:.35; cursor:default;}
+
+  /* ---------- Rules / How-to-play panel ---------- */
+  .rules-modal{max-width:780px; width:min(94vw,780px); max-height:88vh; overflow-y:auto;
+    text-align:left; padding:26px 30px 22px; position:relative;}
+  .rules-modal .sb-sub{margin-bottom:20px;}
+  .rules-close{position:absolute; top:18px; right:20px;}
+  .rules-sec{margin:0;}
+  .rules-sec p{font-size:13px; line-height:1.6; color:var(--ink); margin:0 0 11px; max-width:none;}
+  .rules-sec ul{margin:0 0 13px; padding-left:20px;}
+  .rules-sec li{font-size:13px; line-height:1.55; color:var(--ink); margin-bottom:6px;}
+  .rules-sec li b, .rules-sec p b{color:var(--wood-dark);}
+  .rules-cost{width:100%; border-collapse:collapse; font-size:12.5px; margin:0 0 13px;}
+  .rules-cost th, .rules-cost td{text-align:left; padding:6px 9px; border-bottom:1px solid rgba(107,79,46,.14);}
+  .rules-cost th{font-size:9.5px; letter-spacing:.7px; text-transform:uppercase; color:var(--ink-soft); font-weight:700;}
+  .rules-cost td:first-child{font-weight:700; color:var(--wood-dark); white-space:nowrap;}
+  .rules-cost tr:last-child td{border-bottom:0;}
+  .rules-cost .cost-cards{display:grid; grid-template-columns:repeat(5,18px); gap:5px; align-items:center;}
+  .rules-cost .cost-cards .res-card{margin:0; display:block;}
+  .rules-note{font-size:12px; color:var(--ink-soft); font-style:italic; margin:-4px 0 13px;}
+  .rules-h{display:block; background:var(--pc-head); margin:14px -30px 10px; padding:5px 30px; font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--ink);}
+  .rules-h:first-child{margin-top:4px;}
+  .rules-hr{border:none; border-top:1px solid rgba(107,79,46,.2); margin:14px 0 0;}
+  .res-card{vertical-align:middle; margin:0 2px; display:inline-block; overflow:visible;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="board-card">
+    <div class="view-tabs">
+      <div class="seg-group">
+        <button class="seg sel" id="tabBoard" onclick="showView('board')">Board</button>
+        <button class="seg" id="tabStats" onclick="showView('stats')">Stats</button>
+      </div>
+    </div>
+    <svg id="board" viewBox="-50 -50 700 690" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Catan board"></svg>
+    <div id="statsView" class="stats-view" style="display:none"></div>
+  </div>
+
+  <aside class="panel">
+    <div class="panel-head">
+      <h1 class="title">CATAN</h1>
+    </div>
+
+    <div class="conn-bar" id="connBar" title="Real-time connection status">
+      <span class="conn-dot"></span>
+      <span class="conn-room">Room <code id="connRoom">…</code></span>
+      <span class="conn-who" id="connWho">connecting…</span>
+    </div>
+
+    <div class="section controls-bar">
+      <div class="sound-ctl">
+        <button class="btn-ghost" id="soundBtn" title="Sound on/off" aria-label="Toggle sound">🔊</button>
+        <input type="range" id="volSlider" class="vol-slider" min="0" max="100" value="60" title="Volume" aria-label="Volume">
+      </div>
+      <div class="ctl-right">
+        <button class="btn-ghost" id="rulesBtn">Rules</button>
+        <button class="btn-ghost" id="newGameBtn">New game</button>
+      </div>
+    </div>
+
+    <div class="section" id="autoSection">
+      <div class="autobar">
+        <div class="mode-line">
+          <div class="mode-left">
+            <span class="spd-lab">Mode</span>
+            <div class="seg-group">
+              <button class="seg" id="modeManual">Manual</button>
+              <button class="seg" id="modeAuto">Auto · watch</button>
+            </div>
+          </div>
+          <div class="auto-status" id="autoStatus"></div>
+        </div>
+        <div class="speed-line" id="speedLine">
+          <span class="spd-lab">Speed</span>
+          <div class="seg-group" id="spdGroup">
+            <button class="seg spd" data-ms="1100">Slow</button>
+            <button class="seg spd" data-ms="550">Normal</button>
+            <button class="seg spd" data-ms="220">Fast</button>
+          </div>
+          <button class="seg" id="pauseBtn">Pause</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="dice-row">
+        <div class="dice" id="dice"></div>
+        <div class="sum" id="sum">–<small>Roll</small></div>
+      </div>
+      <div class="bank" id="bank"></div>
+    </div>
+
+    <div class="section">
+      <div class="players" id="players"></div>
+    </div>
+
+    <div class="section">
+      <div class="prompt" id="prompt">Welcome to the island.</div>
+      <div class="actions" id="actions"></div>
+    </div>
+
+    <div class="section">
+      <div class="log" id="log"></div>
+    </div>
+
+    <div class="section" id="replaySection">
+      <div class="replay">
+        <div class="replay-top">
+          <span class="spd-lab">Replay</span>
+          <span class="replay-count" id="replayCount">—</span>
+          <button class="seg" id="replayLive" title="Jump back to the live game">Return to present ⏭</button>
+        </div>
+        <input type="range" id="replaySlider" class="replay-slider" min="0" max="0" value="0" step="1"
+          aria-label="Replay timeline">
+        <div class="replay-ctl">
+          <button class="seg" id="replayPrev" title="Previous play">◀</button>
+          <button class="seg" id="replayNext" title="Next play">▶</button>
+        </div>
+        <div class="replay-label" id="replayLabel"></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- Start / End overlay -->
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal">
+    <h1>CATAN</h1>
+    <div class="sub">Settlers of the Island</div>
+    <p>Collect wood, brick, sheep, wheat and ore. Build settlements and roads, upgrade to cities, buy development cards and race to <strong>10 victory points</strong>.</p>
+    <div class="setup" id="setup">
+      <div class="setup-row">
+        <span class="setup-lab">Players</span>
+        <div class="count-btns" id="countBtns"></div>
+      </div>
+      <div class="seats" id="seats"></div>
+      <label class="watch-row"><input type="checkbox" id="watchStart"><span>Auto-watch mode: let every player play itself while I watch.</span></label>
+      <div class="start-row">
+        <span class="start-warn" id="startWarn" role="alert"></span>
+        <button class="btn primary span2" id="startBtn" onclick="startGame()">Start game</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Trade dialog -->
+<div class="overlay hidden" id="tradeOverlay">
+  <div class="modal trade-modal" id="tradeModal"></div>
+</div>
+
+<!-- Discard dialog (when a 7 is rolled) -->
+<div class="overlay hidden" id="discardOverlay">
+  <div class="modal trade-modal" id="discardModal"></div>
+</div>
+
+<!-- Steal-target dialog (when several rivals border the robber's hex) -->
+<div class="overlay hidden" id="stealOverlay">
+  <div class="modal trade-modal" id="stealModal"></div>
+</div>
+
+<!-- Play development card dialog -->
+<div class="overlay hidden" id="devOverlay">
+  <div class="modal trade-modal" id="devModal"></div>
+</div>
+
+<!-- Game-over scoreboard -->
+<div class="overlay hidden" id="gameOverOverlay">
+  <div class="modal sb-modal" id="gameOverModal"></div>
+</div>
+
+<!-- Resource card SVG symbols (hidden defs, referenced via <use>) -->
+<svg style="display:none" aria-hidden="true">
+  <defs>
+    <symbol id="rcard-wood" viewBox="0 0 16 22">
+      <rect width="16" height="22" rx="2.5" fill="#2f6b3c"/>
+      <polygon points="8,3 13.5,13 2.5,13" fill="white" opacity=".9"/>
+      <rect x="6.5" y="13" width="3" height="4.5" fill="white" opacity=".9"/>
+    </symbol>
+    <symbol id="rcard-brick" viewBox="0 0 16 22">
+      <rect width="16" height="22" rx="2.5" fill="#bf6138"/>
+      <rect x="1" y="4" width="6" height="2.5" rx=".4" fill="white" opacity=".8"/>
+      <rect x="9" y="4" width="6" height="2.5" rx=".4" fill="white" opacity=".8"/>
+      <rect x="1" y="8.5" width="3.5" height="2.5" rx=".4" fill="white" opacity=".8"/>
+      <rect x="6" y="8.5" width="4" height="2.5" rx=".4" fill="white" opacity=".8"/>
+      <rect x="12" y="8.5" width="3" height="2.5" rx=".4" fill="white" opacity=".8"/>
+      <rect x="1" y="13" width="6" height="2.5" rx=".4" fill="white" opacity=".8"/>
+      <rect x="9" y="13" width="6" height="2.5" rx=".4" fill="white" opacity=".8"/>
+    </symbol>
+    <symbol id="rcard-sheep" viewBox="0 0 16 22">
+      <rect width="16" height="22" rx="2.5" fill="#a8c459"/>
+      <ellipse cx="7.5" cy="12" rx="5" ry="3.5" fill="#3a2e10" opacity=".75"/>
+      <circle cx="12.5" cy="9.5" r="2.3" fill="#3a2e10" opacity=".75"/>
+      <rect x="5" y="15" width="2" height="3.5" rx=".4" fill="#3a2e10" opacity=".75"/>
+      <rect x="9" y="15" width="2" height="3.5" rx=".4" fill="#3a2e10" opacity=".75"/>
+    </symbol>
+    <symbol id="rcard-wheat" viewBox="0 0 16 22">
+      <rect width="16" height="22" rx="2.5" fill="#e3b23c"/>
+      <rect x="7" y="14" width="2" height="5" fill="#3a2e10" opacity=".7"/>
+      <rect x="6" y="12" width="4" height="2.5" rx=".5" fill="#3a2e10" opacity=".7"/>
+      <rect x="7" y="8" width="2" height="5" fill="#3a2e10" opacity=".7"/>
+      <ellipse cx="8" cy="6" rx="1.8" ry="3" fill="#3a2e10" opacity=".7"/>
+      <line x1="8" y1="10" x2="4" y2="6.5" stroke="#3a2e10" stroke-width="1.2" opacity=".7"/>
+      <ellipse cx="3" cy="5" rx="1.3" ry="2.2" fill="#3a2e10" opacity=".7" transform="rotate(-25 3 5)"/>
+      <line x1="8" y1="10" x2="12" y2="6.5" stroke="#3a2e10" stroke-width="1.2" opacity=".7"/>
+      <ellipse cx="13" cy="5" rx="1.3" ry="2.2" fill="#3a2e10" opacity=".7" transform="rotate(25 13 5)"/>
+    </symbol>
+    <symbol id="rcard-ore" viewBox="0 0 16 22">
+      <rect width="16" height="22" rx="2.5" fill="#74808d"/>
+      <polygon points="8,3 14,16 2,16" fill="white" opacity=".85"/>
+      <polygon points="12.5,7 16,16 9,16" fill="white" opacity=".55"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- Rules / How-to-play panel -->
+<div class="overlay hidden" id="rulesOverlay">
+  <div class="modal rules-modal" id="rulesModal">
+    <button class="btn-ghost rules-close" id="rulesCloseTop">Close ✕</button>
+    <h2 class="sb-title">How to Play</h2>
+    <div class="sb-sub">Settlers of Catan - Quick Guide</div>
+
+    <div class="rules-sec">
+
+      <h3 class="rules-h" style="margin-top:4px">Goal</h3>
+      <p>Be the first player to reach <b>10 victory points</b>. Points come from your settlements and cities on the board, plus the special awards and Victory Point cards described below. The game ends the instant someone reaches 10 on their turn.</p>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">Setup</h3>
+      <p>Play happens in <b>snake order</b>. Going around the table once, each player places a settlement and a road. Then, in reverse order, each player places a <b>second</b> settlement and road. So everyone ends up with 2 settlements and 2 roads before normal turns begin.</p>
+      <ul>
+        <li>Your second settlement immediately earns you one resource from each hex touching it, which will be your starting hand.</li>
+        <li>The usual placement rules apply during setup. However, your first two roads and settlements don't yet need to connect to anything.</li>
+      </ul>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">The Board</h3>
+      <p>The island is a ring of hexes. Each producing hex shows a resource and a number token. When that number is rolled, the hex produces its resource for every settlement and city touching it.</p>
+      <ul>
+        <li>Resources: wood, brick, sheep, wheat and ore.</li>
+        <li>The <b>desert</b> produces nothing and is where the <b>robber</b> starts.</li>
+        <li>With <b>5 or 6 players</b>, the larger extension board is used, with more hexes and number tokens.</li>
+      </ul>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">A Turn</h3>
+      <ul>
+        <li><b>(Optional) Play one development card.</b> You may do this before rolling.</li>
+        <li><b>Roll the dice.</b> Every settlement on a matching hex collects <b>1</b> resource, and every city collects <b>2</b>.</li>
+        <li><b>Build, trade, and/or play a development card</b> (if you haven't already played one this turn).</li>
+        <li><b>End your turn</b> and pass to the next player.</li>
+      </ul>
+      <p class="rules-note">Only one development card may be played per turn, before or after the roll, and never on the same turn you bought it.</p>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">Rolling a 7</h3>
+      <ul>
+        <li>No resources are produced.</li>
+        <li>Every player holding <b>more than 7 cards</b> discards <b>half</b> (rounded down) back to the bank.</li>
+        <li>The roller moves the <b>robber</b> to a new hex and <b>steals one random card</b> from an opponent with a settlement or city touching that hex.</li>
+        <li>The robber <b>blocks its hex</b> from producing anything until it is moved again (by another 7 or a Knight).</li>
+      </ul>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">Building</h3>
+      <table class="rules-cost">
+        <tr><th>Build</th><th>Cost</th></tr>
+        <tr><td>Road</td><td><div class="cost-cards"><svg class="res-card" width="18" height="25" aria-label="wood"><use href="#rcard-wood"/></svg><svg class="res-card" width="18" height="25" aria-label="brick"><use href="#rcard-brick"/></svg></div></td></tr>
+        <tr><td>Settlement</td><td><div class="cost-cards"><svg class="res-card" width="18" height="25" aria-label="wood"><use href="#rcard-wood"/></svg><svg class="res-card" width="18" height="25" aria-label="brick"><use href="#rcard-brick"/></svg><svg class="res-card" width="18" height="25" aria-label="sheep"><use href="#rcard-sheep"/></svg><svg class="res-card" width="18" height="25" aria-label="wheat"><use href="#rcard-wheat"/></svg></div></td></tr>
+        <tr><td>City</td><td><div class="cost-cards"><svg class="res-card" width="18" height="25" aria-label="ore"><use href="#rcard-ore"/></svg><svg class="res-card" width="18" height="25" aria-label="ore"><use href="#rcard-ore"/></svg><svg class="res-card" width="18" height="25" aria-label="ore"><use href="#rcard-ore"/></svg><svg class="res-card" width="18" height="25" aria-label="wheat"><use href="#rcard-wheat"/></svg><svg class="res-card" width="18" height="25" aria-label="wheat"><use href="#rcard-wheat"/></svg></div></td></tr>
+        <tr><td>Development card</td><td><div class="cost-cards"><svg class="res-card" width="18" height="25" aria-label="ore"><use href="#rcard-ore"/></svg><svg class="res-card" width="18" height="25" aria-label="wheat"><use href="#rcard-wheat"/></svg><svg class="res-card" width="18" height="25" aria-label="sheep"><use href="#rcard-sheep"/></svg></div></td></tr>
+      </table>
+      <ul>
+        <li>A <b>settlement</b> must connect to one of your own roads, and can't sit next to another settlement or city. There must be at least two empty intersections or roads between them.</li>
+        <li>A <b>city</b> upgrades one of your existing settlements, and then collects 2 of each matching resource instead of 1.</li>
+      </ul>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">Victory Points</h3>
+      <ul>
+        <li>Settlement: 1 point each.</li>
+        <li>City: 2 points each.</li>
+        <li>Longest Road (starting at a sequence of five continuous roads): 2 points.</li>
+        <li>Largest Army (starting at three played Knight cards): 2 points.</li>
+        <li>Victory Point card: 1 point each (kept hidden until you win).</li>
+      </ul>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">Trading</h3>
+      <p>You may trade on your turn, after rolling:</p>
+      <ul>
+        <li><b>Bank</b> - trade 4 identical resources for any 1 resource (4:1).</li>
+        <li><b>Harbours</b> - 3:1 on a generic harbour, or 2:1 for a specific resource, if you have a settlement or city on that harbour.</li>
+        <li><b>Players</b> - make direct trades with other players for any resources you both agree on.</li>
+      </ul>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">Development Cards</h3>
+      <ul>
+        <li><b>Knight:</b> move the robber and steal a card, just like rolling a 7. Playing 3 Knights earns Largest Army.</li>
+        <li><b>Victory Point:</b> plus 1 victory point, kept hidden until you win.</li>
+        <li><b>Road Building:</b> place 2 roads for free.</li>
+        <li><b>Year of Plenty:</b> take any 2 resources from the bank.</li>
+        <li><b>Monopoly:</b> name one resource, every other player hands you all of theirs.</li>
+      </ul>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">Longest Road</h3>
+      <p>The first player to build a continuous road of <b>5 or more</b> segments takes the Longest Road award, which earns an extra <b>2 VP</b>. It passes to any player who later builds a strictly longer road.</p>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">Largest Army</h3>
+      <p>The first player to play <b>3 Knights</b> takes the Largest Army award, which earns an extra <b>2 VP</b>. It passes to any player who later plays more Knights.</p>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">The Bank</h3>
+      <p>The bank holds <b>19 of each</b> resource. If a roll would pay out more of a resource than remains, then a single owed player takes whatever is left. However, if several players are owed that resource and there isn't enough for all of them, none of them receive it.</p>
+      <hr class="rules-hr">
+
+      <h3 class="rules-h">Game Controls</h3>
+      <ul>
+        <li><b>Manual vs Auto mode:</b> In Manual mode you make every decision for the active seat. In Auto mode each seat plays itself while you watch the game unfold.</li>
+        <li><b>Pause &amp; Speed:</b> While auto-playing, use Pause to stop the action and the Speed buttons (Slow / Normal / Fast) to set how quickly the bots take their plays.</li>
+        <li><b>Stats view:</b> Switch the board area to the live Stats tab to see roll-frequency and resource-production figures update as the game goes.</li>
+        <li><b>Rewind / Replay:</b> Available when the game is paused or in Manual mode. Drag the timeline or use the step buttons to go back through every play, then "Return to present" to rejoin the live game.</li>
+      </ul>
+
+    </div>
+
+    <div class="sb-footer">
+      <button class="btn primary" id="rulesCloseBtn" style="min-width:160px;padding:11px 22px;font-size:14px">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const SVGNS="http://www.w3.org/2000/svg";
+const el=(tag,attrs={},parent)=>{const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;};
+
+/* ---------------- Static data ---------------- */
+const TILE_COLORS={wood:"#2f6b3c",brick:"#bf6138",sheep:"#a8c459",wheat:"#e3b23c",ore:"#74808d",desert:"#d9c08c"};
+const RES_LABEL={wood:"Wood",brick:"Brick",sheep:"Sheep",wheat:"Wheat",ore:"Ore"};
+const RES_ORDER=["wood","brick","sheep","wheat","ore"];
+const RES_SHORT={wood:"Wood",brick:"Brick",sheep:"Sheep",wheat:"Wheat",ore:"Ore"};
+// Two-letter resource tags used on port tokens (e.g. "2:1 Wd").
+const PORT_SHORT={wood:"Wd",brick:"Br",sheep:"Sh",wheat:"Wh",ore:"Or"};
+// Self-contained monochrome SVG icons (currentColor) used on the player cards. No emoji / icon fonts.
+const PC_ICONS={
+  // Longest Road award — a road segment with a dashed centre line
+  road:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 5 21"/><path d="M15 3l4 18"/><path d="M12 4v2.5M12 10v2.5M12 15.5v2.5"/></svg>`,
+  // Largest Army award — a cluster of three knight helmets
+  army:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 11V6a4 4 0 0 1 8 0v5z"/><path d="M2.5 19v-5a4 4 0 0 1 8 0v5z"/><path d="M13.5 19v-5a4 4 0 0 1 8 0v5z"/></svg>`,
+  // Cards in hand — a fanned spread of three cards
+  cards:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.4" y="9" width="8" height="11" rx="1.3" transform="rotate(-18 6.4 14.5)"/><rect x="8" y="6.2" width="8" height="12" rx="1.3"/><rect x="13.6" y="9" width="8" height="11" rx="1.3" transform="rotate(18 17.6 14.5)"/></svg>`,
+  // Development cards — a stack of face-down cards (back marked with an X)
+  dev:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M4.5 7.5v11a2 2 0 0 0 2 2h9"/><rect x="7.5" y="3.5" width="12" height="15" rx="2"/><path d="M10.5 7.5l6 7M16.5 7.5l-6 7"/></svg>`,
+  // Knights played — a single knight helmet with visor slit
+  knight:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M5 10a7 7 0 0 1 14 0v6a2 2 0 0 1-2 2h-2v2.5h-4V18H7a2 2 0 0 1-2-2z"/><path d="M5.3 10.5h13.4"/><path d="M11 13v4M13.5 13v4"/></svg>`,
+  // Generic 3:1 port — an anchor
+  anchor:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><path d="M12 7v14"/><path d="M5 13a7 7 0 0 0 14 0"/><path d="M3.5 13H6M18 13h2.5"/></svg>`,
+};
+// Development cards — playable types (VP cards are never actively played) and all types.
+const DEV_TYPES=["knight","road","plenty","mono"];
+const DEV_ALL=["knight","vp","road","plenty","mono"];
+const DEV_NAME={knight:"Knight",vp:"Victory Point",road:"Road Building",plenty:"Year of Plenty",mono:"Monopoly"};
+// Available player colours — each may be picked by only one player.
+const PALETTE=[
+  {name:"Red",hex:"#c0392b"},
+  {name:"Blue",hex:"#2f74b5"},
+  {name:"Orange",hex:"#df8a2c"},
+  {name:"Green",hex:"#3e8e5a"},
+  {name:"Brown",hex:"#8a5a2b"},
+  {name:"White",hex:"#efe9dc"},
+];
+// Populated from the setup screen when a game starts; indexed by player number.
+let PLAYER_COLORS=PALETTE.slice(0,4).map(c=>c.hex);
+let PLAYER_NAMES=PALETTE.slice(0,4).map(c=>c.name);
+const COST={
+  road:{wood:1,brick:1},
+  settlement:{wood:1,brick:1,sheep:1,wheat:1},
+  city:{ore:3,wheat:2},
+  dev:{ore:1,wheat:1,sheep:1}
+};
+const LIMIT={settlement:5,city:4,road:15};
+
+/* ================= SOUND & ANIMATION (final polish) =================
+   Sounds are synthesised live with the Web Audio API — no external files, so the
+   game stays one self-contained page. Animations are short and CSS-driven; both
+   honour prefers-reduced-motion and never block or delay game logic. */
+const RM = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : {matches:false};
+function reduceMotion(){ return !!RM.matches; }
+
+// Transient hints set by an action just before renderAll(), consumed once during render.
+const FX={ diceRoll:false, newBuilding:null, newRoad:null, robberFrom:null, prevRes:null };
+
+const SFX=(function(){
+  let ctx=null, master=null, muted=false, vol=0.6, busyUntil=0;
+  try{
+    const sv=localStorage.getItem("catanSound"); if(sv!=null) muted=(sv==="off");
+    const vv=localStorage.getItem("catanVol");   if(vv!=null) vol=Math.max(0,Math.min(1,parseFloat(vv)||0));
+  }catch(e){}
+  function ensure(){
+    if(ctx) return ctx;
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return null;
+      ctx=new AC();
+      master=ctx.createGain(); master.gain.value=vol; master.connect(ctx.destination);
+    }catch(e){ ctx=null; }
+    return ctx;
+  }
+  function unlock(){ if(ensure()&&ctx.state==="suspended") ctx.resume(); }
+  function tone(t0,o){
+    const osc=ctx.createOscillator(), g=ctx.createGain();
+    osc.type=o.type||"sine"; osc.frequency.setValueAtTime(o.freq,t0);
+    if(o.freq2) osc.frequency.exponentialRampToValueAtTime(Math.max(1,o.freq2),t0+o.dur);
+    const gain=o.gain==null?0.3:o.gain, atk=o.attack==null?0.008:o.attack;
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.linearRampToValueAtTime(gain,t0+atk);
+    g.gain.exponentialRampToValueAtTime(0.0008,t0+o.dur);
+    osc.connect(g); g.connect(master); osc.start(t0); osc.stop(t0+o.dur+0.03);
+  }
+  function noise(t0,o){
+    const dur=o.dur, len=Math.max(1,Math.floor(ctx.sampleRate*dur));
+    const buf=ctx.createBuffer(1,len,ctx.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+    const src=ctx.createBufferSource(); src.buffer=buf;
+    const f=ctx.createBiquadFilter(); f.type=o.ftype||"lowpass"; f.frequency.value=o.freq||1200;
+    const g=ctx.createGain(); g.gain.value=o.gain==null?0.25:o.gain;
+    src.connect(f); f.connect(g); g.connect(master); src.start(t0);
+  }
+  // Each cue schedules a short voice and returns its approximate audible length.
+  const CUES={
+    roll:n=>{ noise(n,{dur:0.05,gain:0.16,freq:2400,ftype:"bandpass"}); noise(n+0.06,{dur:0.05,gain:0.14,freq:1900,ftype:"bandpass"}); tone(n+0.12,{freq:520,freq2:380,dur:0.12,type:"triangle",gain:0.24}); return 0.22; },
+    roll7:n=>{ tone(n,{freq:300,freq2:150,dur:0.32,type:"sawtooth",gain:0.26}); tone(n+0.02,{freq:150,freq2:88,dur:0.34,type:"sine",gain:0.22}); return 0.36; },
+    road:n=>{ noise(n,{dur:0.09,gain:0.18,freq:900,ftype:"lowpass"}); tone(n,{freq:240,freq2:200,dur:0.1,type:"triangle",gain:0.18}); return 0.12; },
+    settlement:n=>{ tone(n,{freq:523,dur:0.12,type:"triangle",gain:0.26}); tone(n+0.09,{freq:784,dur:0.16,type:"triangle",gain:0.26}); return 0.22; },
+    city:n=>{ tone(n,{freq:523,dur:0.14,type:"triangle",gain:0.24}); tone(n+0.08,{freq:659,dur:0.14,type:"triangle",gain:0.24}); tone(n+0.16,{freq:1047,dur:0.2,type:"triangle",gain:0.26}); return 0.3; },
+    collect:n=>{ tone(n,{freq:880,dur:0.08,type:"sine",gain:0.18}); tone(n+0.07,{freq:1175,dur:0.1,type:"sine",gain:0.18}); return 0.16; },
+    robber:n=>{ tone(n,{freq:220,freq2:130,dur:0.2,type:"sawtooth",gain:0.2}); return 0.2; },
+    steal:n=>{ tone(n,{freq:300,freq2:600,dur:0.08,type:"square",gain:0.13}); tone(n+0.07,{freq:520,freq2:260,dur:0.12,type:"triangle",gain:0.18}); return 0.18; },
+    trade:n=>{ tone(n,{freq:660,dur:0.1,type:"sine",gain:0.2}); tone(n+0.09,{freq:990,dur:0.12,type:"sine",gain:0.2}); return 0.2; },
+    dev:n=>{ noise(n,{dur:0.07,gain:0.14,freq:3000,ftype:"highpass"}); tone(n+0.04,{freq:587,dur:0.12,type:"triangle",gain:0.2}); return 0.16; },
+    win:n=>{ [523,659,784,1047].forEach((f,i)=>tone(n+i*0.12,{freq:f,dur:0.26,type:"triangle",gain:0.28})); tone(n+0.48,{freq:1568,dur:0.4,type:"triangle",gain:0.28}); return 0.9; }
+  };
+  function play(name,delay){
+    if(muted) return;
+    if(!ensure()) return;
+    unlock();
+    const fire=()=>{
+      const now=ctx.currentTime;
+      if(now<busyUntil) return;             // a cue is still sounding — skip rather than stack into noise
+      const dur=(CUES[name]||(()=>0.15))(now);
+      busyUntil=now+Math.min(dur,0.5);      // cap the reserve so back-to-back distinct cues aren't all dropped
+    };
+    if(delay>0) setTimeout(fire,delay); else fire();
+  }
+  return {
+    play, unlock,
+    isMuted:()=>muted,
+    getVolume:()=>vol,
+    toggleMute(){ muted=!muted; try{localStorage.setItem("catanSound",muted?"off":"on");}catch(e){} },
+    setVolume(v){ vol=Math.max(0,Math.min(1,v)); if(master) master.gain.value=vol; try{localStorage.setItem("catanVol",String(vol));}catch(e){} }
+  };
+})();
+
+/* ---------------- Board geometry ---------------- */
+const R=48, W=Math.sqrt(3)*R, VD=1.5*R, CX0=300, CY0=295;
+const COUNTS_SMALL=[3,4,5,4,3];        // 19-hex board (3-4 players)
+const COUNTS_LARGE=[3,4,5,6,5,4,3];    // 30-hex 5-6 extension board (5-6 players)
+let COUNTS=COUNTS_SMALL;
+let hexes=[], vertices=[], edges=[], harbours=[];
+
+function buildGeometry(){
+  hexes=[]; vertices=[]; edges=[];
+  const vmap=new Map(), emap=new Map();
+  const vkey=(x,y)=>Math.round(x)+","+Math.round(y);
+  const ekey=(a,b)=>a<b?a+"-"+b:b+"-"+a;
+  const getV=(x,y)=>{const k=vkey(x,y);if(vmap.has(k))return vmap.get(k);
+    const v={id:vertices.length,x,y,hexes:[],edges:[],adj:[]};vertices.push(v);vmap.set(k,v);return v;};
+  const getE=(a,b,hi)=>{const k=ekey(a,b);
+    if(emap.has(k)){const e=emap.get(k);if(!e.hexes.includes(hi))e.hexes.push(hi);return e;}
+    const e={id:edges.length,v1:Math.min(a,b),v2:Math.max(a,b),hexes:[hi]};edges.push(e);emap.set(k,e);return e;};
+  COUNTS.forEach((count,row)=>{
+    const y=CY0+(row-(COUNTS.length-1)/2)*VD, xStart=CX0-(count-1)/2*W;
+    for(let i=0;i<count;i++) hexes.push({cx:xStart+i*W,cy:y,corners:[],edgeIds:[]});
+  });
+  hexes.forEach((h,hi)=>{
+    for(let k=0;k<6;k++){
+      const ang=(-90+60*k)*Math.PI/180;
+      const v=getV(h.cx+R*Math.cos(ang),h.cy+R*Math.sin(ang));
+      h.corners.push(v.id); v.hexes.push(hi);
+    }
+    for(let k=0;k<6;k++){
+      const a=h.corners[k], b=h.corners[(k+1)%6];
+      const e=getE(a,b,hi); h.edgeIds.push(e.id);
+    }
+  });
+  edges.forEach(e=>{
+    vertices[e.v1].edges.push(e.id); vertices[e.v2].edges.push(e.id);
+    vertices[e.v1].adj.push(e.v2); vertices[e.v2].adj.push(e.v1);
+  });
+}
+
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+
+function assignTiles(){
+  let bag, nums;
+  if(hexes.length===30){
+    // 5-6 extension board: 6 wood, 6 sheep, 6 wheat, 5 brick, 5 ore, 2 desert
+    bag=shuffle([...Array(6).fill("wood"),...Array(6).fill("sheep"),...Array(6).fill("wheat"),
+      ...Array(5).fill("brick"),...Array(5).fill("ore"),...Array(2).fill("desert")]);
+    // 28 number tokens: two each of 2 & 12, three each of 3,4,5,6,8,9,10,11
+    nums=shuffle([2,2,12,12,3,3,3,4,4,4,5,5,5,6,6,6,8,8,8,9,9,9,10,10,10,11,11,11]);
+  } else {
+    // standard 19-hex board
+    bag=shuffle([...Array(4).fill("wood"),...Array(3).fill("brick"),...Array(4).fill("sheep"),
+      ...Array(4).fill("wheat"),...Array(3).fill("ore"),"desert"]);
+    nums=shuffle([2,3,3,4,4,5,5,6,6,8,8,9,9,10,10,11,11,12]);
+  }
+  const deserts=[];
+  hexes.forEach((h,i)=>{
+    h.resource=bag[i];
+    if(h.resource==="desert"){h.number=null; deserts.push(i);}
+  });
+  // hex adjacency: two hexes are adjacent when they share an edge
+  const hexAdj=hexes.map(()=>[]);
+  edges.forEach(e=>{ if(e.hexes.length===2){ const[a,b]=e.hexes; hexAdj[a].push(b); hexAdj[b].push(a); } });
+  const numbered=hexes.map((h,i)=>i).filter(i=>hexes[i].resource!=="desert");
+  // red number tokens (6 & 8) may never sit next to another red token
+  const isRed=n=>n===6||n===8;
+  const place=()=>numbered.forEach((hi,k)=>{ hexes[hi].number=nums[k]; });
+  const okay=()=>numbered.every(hi=>!isRed(hexes[hi].number) || hexAdj[hi].every(nb=>!isRed(hexes[nb].number)));
+  place();
+  for(let tries=0; tries<300 && !okay(); tries++){ shuffle(nums); place(); }
+  // robber starts on a desert (one of the two on the large board)
+  return deserts[Math.floor(Math.random()*deserts.length)];
+}
+
+/* Place harbours (ports) on coastal boundary edges, spread around the coast.
+   type "3:1" = generic; a resource name = 2:1 for that resource. */
+function assignHarbours(){
+  harbours=[];
+  // boundary edges = edges touching only one hex; order them around the coast by angle
+  const boundary=edges.filter(e=>e.hexes.length===1).map(e=>{
+    const a=vertices[e.v1], b=vertices[e.v2];
+    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    return {e, ang:Math.atan2(my-CY0,mx-CX0)};
+  }).sort((p,q)=>p.ang-q.ang);
+  let types;
+  if(hexes.length===30){
+    // 30-hex board: 5 generic 3:1 and 6 specific 2:1 (wheat repeated)
+    types=["3:1","3:1","3:1","3:1","3:1","wood","brick","sheep","wheat","ore","wheat"];
+  } else {
+    // 19-hex board: 4 generic 3:1 and 5 specific 2:1 (one of each resource)
+    types=["3:1","3:1","3:1","3:1","wood","brick","sheep","wheat","ore"];
+  }
+  shuffle(types);
+  const n=types.length, step=boundary.length/n;
+  for(let i=0;i<n;i++){
+    const e=boundary[Math.floor(i*step)].e;
+    harbours.push({edge:e.id, v1:e.v1, v2:e.v2, type:types[i]});
+  }
+}
+
+/* ---------------- Game state ---------------- */
+let S=null;
+const $=id=>document.getElementById(id);
+
+/* ---------------- Pre-game setup screen ---------------- */
+const setupState={count:3, players:[]};
+function firstFreeColor(taken){ return (PALETTE.find(c=>!taken.includes(c.hex))||PALETTE[0]).hex; }
+function defaultSeat(taken,i){ return {name:"Player "+(i+1), color:firstFreeColor(taken), type:"human"}; }
+function ensureSeats(){
+  const ps=setupState.players;
+  while(ps.length<setupState.count) ps.push(defaultSeat(ps.map(p=>p.color),ps.length));
+  ps.length=setupState.count;
+}
+function setupValid(){
+  const ps=setupState.players.slice(0,setupState.count);
+  if(ps.length<3||ps.length>6) return false;
+  if(!ps.every(p=>p.name.trim().length>0)) return false;
+  // names must be distinct (case-insensitive, surrounding spaces ignored)
+  const names=ps.map(p=>p.name.trim().toLowerCase());
+  if(new Set(names).size!==names.length) return false;
+  const cols=ps.map(p=>p.color);
+  return cols.every(Boolean) && new Set(cols).size===cols.length;
+}
+function startWarning(){
+  const ps=setupState.players.slice(0,setupState.count);
+  if(!ps.every(p=>p.name.trim().length>0)) return "Every player needs a name.";
+  const names=ps.map(p=>p.name.trim().toLowerCase());
+  if(new Set(names).size!==names.length) return "Player names must be unique.";
+  return "";
+}
+function refreshStartBtn(){
+  const valid=setupValid();
+  const b=$("startBtn"); if(b) b.disabled=!valid;
+  const w=$("startWarn"); if(w) w.textContent=valid?"":startWarning();
+}
+function renderSetup(){
+  ensureSeats();
+  // player-count buttons
+  const cb=$("countBtns"); cb.innerHTML="";
+  [3,4,5,6].forEach(n=>{
+    const b=document.createElement("button");
+    b.className="count-btn"+(setupState.count===n?" sel":""); b.textContent=n;
+    b.addEventListener("click",()=>{ setupState.count=n; renderSetup(); });
+    cb.appendChild(b);
+  });
+  // one row per seat: name input + colour swatches
+  const seats=$("seats"); seats.innerHTML="";
+  const taken=setupState.players.slice(0,setupState.count).map(p=>p.color);
+  setupState.players.slice(0,setupState.count).forEach((seat,i)=>{
+    const row=document.createElement("div"); row.className="seat";
+    const num=document.createElement("span"); num.className="seat-num"; num.textContent=(i+1);
+    const inp=document.createElement("input");
+    inp.className="seat-name"+(seat.name.trim()?"":" invalid");
+    inp.type="text"; inp.maxLength=14; inp.value=seat.name; inp.placeholder="Name";
+    inp.setAttribute("aria-label","Player "+(i+1)+" name");
+    inp.addEventListener("input",()=>{
+      seat.name=inp.value;
+      inp.classList.toggle("invalid",!inp.value.trim());
+      refreshStartBtn();
+    });
+    const sws=document.createElement("div"); sws.className="swatches";
+    PALETTE.forEach(c=>{
+      const sw=document.createElement("button");
+      sw.className="sw"+(seat.color===c.hex?" sel":"");
+      sw.style.background=c.hex; sw.title=c.name;
+      sw.setAttribute("aria-label",c.name);
+      // disable colours already taken by another seat
+      sw.disabled = (seat.color!==c.hex && taken.includes(c.hex));
+      sw.addEventListener("click",()=>{ seat.color=c.hex; renderSetup(); });
+      sws.appendChild(sw);
+    });
+    row.appendChild(num); row.appendChild(inp); row.appendChild(sws);
+    seats.appendChild(row);
+  });
+  // reserve the height of a full 6-player roster: fill the remaining slots with
+  // invisible placeholder rows so the window keeps a fixed size at any count
+  for(let i=setupState.count;i<6;i++){
+    const row=document.createElement("div"); row.className="seat placeholder";
+    row.setAttribute("aria-hidden","true");
+    const num=document.createElement("span"); num.className="seat-num"; num.textContent=(i+1);
+    const inp=document.createElement("input");
+    inp.className="seat-name"; inp.type="text"; inp.tabIndex=-1; inp.disabled=true;
+    const sws=document.createElement("div"); sws.className="swatches";
+    PALETTE.forEach(c=>{
+      const sw=document.createElement("button");
+      sw.className="sw"; sw.style.background=c.hex; sw.tabIndex=-1; sw.disabled=true;
+      sws.appendChild(sw);
+    });
+    row.appendChild(num); row.appendChild(inp); row.appendChild(sws);
+    seats.appendChild(row);
+  }
+  refreshStartBtn();
+}
+
+function startGame(){
+  if(!setupValid()) return;
+  const seats=setupState.players.slice(0,setupState.count);
+  const n=seats.length;
+  PLAYER_NAMES=seats.map(s=>s.name.trim());
+  PLAYER_COLORS=seats.map(s=>s.color);
+  PLAYER_TYPES=seats.map(s=>s.type||"human");
+  watchMode=!!($("watchStart")&&$("watchStart").checked);
+  watchPendingOff=false; paused=false; clearTimeout(botTimer);
+  resetReplay();
+  $("autoSection").style.display="block";
+  $("replaySection").style.display="block";
+  COUNTS=(n>=5)?COUNTS_LARGE:COUNTS_SMALL;   // larger board for 5-6 players
+  buildGeometry();
+  const robberHex=assignTiles();
+  assignHarbours();
+  S={
+    nPlayers:n,
+    // The bank: 19 cards of each resource. Everything players earn is drawn from here;
+    // everything they pay or discard returns here. Monopoly never touches the bank.
+    bank:{wood:19,brick:19,sheep:19,wheat:19,ore:19},
+    players:Array.from({length:n},(_,i)=>({i,resources:{wood:0,brick:0,sheep:0,wheat:0,ore:0},vp:0,
+      dev:{knight:0,vp:0,road:0,plenty:0,mono:0},      // development cards currently held
+      devNew:{knight:0,vp:0,road:0,plenty:0,mono:0},   // of those, bought this turn (not yet playable)
+      playedKnights:0, roadLen:0,
+      // ---- lifetime per-player stats (all live) ----
+      devBought:0, devPlayed:0,           // dev cards bought / actually played over the game
+      lifetimeRes:0,                      // every resource card ever gained, from any source
+      expProd:0,                          // cumulative expected production (pips/36 summed each roll)
+      robberMoves:0,                      // times this player moved the robber (7 or Knight)
+      cardsStolen:0, cardsStolenFrom:0,   // cards robbed from others / times robbed by others
+      tradesBank:0, tradesHarbour:0, tradesPlayer:0,   // trades made, by kind
+      discardsLost:0})),                  // cards discarded on 7s
+    buildings:{},          // vertexId -> {player,type}
+    roads:{},              // edgeId -> player
+    robberHex,
+    phase:"setup",
+    cur:0,
+    hasRolled:false,
+    mode:null,             // null|settlement|road|city|robber|roadBuild|setupSettlement|setupRoad
+    pendingRobber:false,
+    lastSetupV:null,
+    dice:[null,null],
+    // ---- live statistics ----
+    rollCounts:Array(13).fill(0),     // index = dice total (2..12) -> times rolled
+    production:{wood:0,brick:0,sheep:0,wheat:0,ore:0},                    // total of each resource paid out on rolls
+    playerProduction:Array.from({length:n},()=>({wood:0,brick:0,sheep:0,wheat:0,ore:0})),  // per-player dice gains
+    // development deck (25): 14 Knight, 5 VP, 2 Road Building, 2 Year of Plenty, 2 Monopoly
+    deck:shuffle([...Array(14).fill("knight"),...Array(5).fill("vp"),...Array(2).fill("road"),
+      ...Array(2).fill("plenty"),...Array(2).fill("mono")]),
+    devPlayedThisTurn:false,
+    freeRoadsLeft:0,
+    largestArmy:null,      // player index holding Largest Army (+2 VP)
+    longestRoad:null,      // player index holding Longest Road (+2 VP)
+    _stallSum:0, _stallTurns:0,   // stalemate detection for auto-play
+    log:[]
+  };
+  // snake setup order
+  const fwd=[...Array(n).keys()];
+  S.setupQueue=[...fwd,...[...fwd].reverse()];
+  S.setupIdx=0;
+  S.settlementsPlaced=Array(n).fill(0);
+
+  $("overlay").classList.add("hidden");
+  FX.prevRes=null; FX.newBuilding=null; FX.newRoad=null; FX.robberFrom=null; FX.diceRoll=false;
+  SFX.unlock();                          // the Start click is a user gesture — wake audio now
+  drawStaticBoard();
+  beginSetupTurn();
+  recordSnapshot("Game begins — place your first settlement.");   // starting frame for the scrubber
+  renderReplayBar();
+}
+
+function pushLog(msg,now){ S.log.push({msg,now}); if(S.log.length>40)S.log.shift(); }
+
+/* ---------------- Counting / rules helpers ---------------- */
+function ownCount(p,type){
+  if(type==="road") return Object.values(S.roads).filter(x=>x===p).length;
+  return Object.values(S.buildings).filter(b=>b.player===p&&b.type===type).length;
+}
+function recomputeVP(){
+  S.players.forEach(pl=>pl.vp=0);
+  for(const vid in S.buildings){const b=S.buildings[vid];S.players[b.player].vp+=(b.type==="city"?2:1);}
+  // Victory Point development cards each add 1 (silently, even the turn they were bought).
+  S.players.forEach(pl=>pl.vp+=pl.dev.vp);
+  // Special-award bonuses.
+  if(S.largestArmy!=null) S.players[S.largestArmy].vp+=2;
+  if(S.longestRoad!=null) S.players[S.longestRoad].vp+=2;
+}
+/* Longest continuous road for player p: the longest trail (no edge reused) along their
+   connected road segments, with the path broken at any vertex holding an opponent's building. */
+function longestRoadLength(p){
+  const myEdges=Object.keys(S.roads).filter(eid=>S.roads[eid]===p).map(Number);
+  if(myEdges.length===0) return 0;
+  const adj={};
+  myEdges.forEach(eid=>{
+    const e=edges[eid];
+    (adj[e.v1]=adj[e.v1]||[]).push({eid,to:e.v2});
+    (adj[e.v2]=adj[e.v2]||[]).push({eid,to:e.v1});
+  });
+  const blocked=v=>{const b=S.buildings[v]; return !!(b&&b.player!==p);}; // opponent building cuts the path
+  let best=0;
+  const dfs=(v,len,used,first)=>{
+    if(len>best) best=len;
+    if(blocked(v)&&!first) return;          // a path can end at an opponent's building, but not pass through
+    for(const {eid,to} of adj[v]){
+      if(used.has(eid)) continue;
+      used.add(eid); dfs(to,len+1,used,false); used.delete(eid);
+    }
+  };
+  Object.keys(adj).map(Number).forEach(start=>dfs(start,0,new Set(),true));
+  return best;
+}
+function updateLongestRoad(){
+  S.players.forEach(pl=>pl.roadLen=longestRoadLength(pl.i));
+  const len=i=>S.players[i].roadLen;
+  const prev=S.longestRoad;
+  let holder=prev;
+  if(holder!=null && len(holder)<5) holder=null;     // current holder's road was cut below 5
+  let maxLen=0, leaders=[];
+  for(let i=0;i<S.nPlayers;i++){const L=len(i); if(L>maxLen){maxLen=L;leaders=[i];} else if(L===maxLen) leaders.push(i);}
+  if(maxLen<5) holder=null;
+  else if(holder==null){ if(leaders.length===1) holder=leaders[0]; }   // first to a unique 5+
+  else if(len(holder)<maxLen){ if(leaders.length===1) holder=leaders[0]; } // strictly longer unique challenger
+  // (a tie, or the holder still being the max, leaves the title where it is)
+  if(holder!==prev){
+    S.longestRoad=holder;
+    if(holder==null) pushLog("Longest Road is no longer held.",true);
+    else if(prev==null) pushLog(PLAYER_NAMES[holder]+" claims the Longest Road (+2 VP).",true);
+    else pushLog(PLAYER_NAMES[holder]+" takes the Longest Road from "+PLAYER_NAMES[prev]+" (+2 VP).",true);
+  }
+}
+function updateLargestArmy(){
+  const p=S.cur, k=S.players[p].playedKnights;     // only the player who just played a Knight can gain it
+  if(k<3) return;
+  const cur=S.largestArmy;
+  if(cur===p) return;
+  if(cur==null){ S.largestArmy=p; pushLog(PLAYER_NAMES[p]+" claims the Largest Army (+2 VP).",true); }
+  else if(k>S.players[cur].playedKnights){ S.largestArmy=p; pushLog(PLAYER_NAMES[p]+" takes the Largest Army from "+PLAYER_NAMES[cur]+" (+2 VP).",true); }
+}
+function totalCards(p){return RES_ORDER.reduce((s,r)=>s+S.players[p].resources[r],0);}
+function canAfford(p,cost){return Object.keys(cost).every(r=>S.players[p].resources[r]>=cost[r]);}
+function pay(p,cost){Object.keys(cost).forEach(r=>{S.players[p].resources[r]-=cost[r]; S.bank[r]+=cost[r];});}
+function costText(cost){return Object.keys(cost).map(r=>cost[r]+" "+RES_SHORT[r].toLowerCase()).join(", ");}
+
+/* Harbours a player can use (settlement or city on one of the harbour's vertices). */
+function playerHarbours(p){
+  return harbours.filter(h=>{
+    const b1=S.buildings[h.v1], b2=S.buildings[h.v2];
+    return (b1&&b1.player===p)||(b2&&b2.player===p);
+  });
+}
+function harbourLabel(t){ return t==="3:1" ? "3:1" : "2:1 "+RES_SHORT[t]; }
+// Best maritime rate for giving resource `res`: 4 (bank), 3 (generic harbour) or 2 (matching 2:1).
+function harbourRate(p,res){
+  let rate=4;
+  playerHarbours(p).forEach(h=>{
+    if(h.type==="3:1") rate=Math.min(rate,3);
+    else if(h.type===res) rate=Math.min(rate,2);
+  });
+  return rate;
+}
+
+function hasOwnRoadAt(vid,p){return vertices[vid].edges.some(eid=>S.roads[eid]===p);}
+function roadConnected(eid,p){
+  const e=edges[eid];
+  for(const v of [e.v1,e.v2]){
+    const b=S.buildings[v];
+    if(b&&b.player===p) return true;
+    if(vertices[v].edges.some(o=>o!==eid&&S.roads[o]===p)) return true;
+  }
+  return false;
+}
+function legalSettlements(p,setup){
+  return vertices.filter(v=>!S.buildings[v.id]
+      && v.adj.every(n=>!S.buildings[n])
+      && (setup || hasOwnRoadAt(v.id,p))).map(v=>v.id);
+}
+function legalRoads(p,setup,anchorV){
+  return edges.filter(e=> S.roads[e.id]===undefined
+      && (setup ? (e.v1===anchorV||e.v2===anchorV) : roadConnected(e.id,p))).map(e=>e.id);
+}
+function legalCities(p){
+  return Object.keys(S.buildings).filter(v=>S.buildings[v].player===p&&S.buildings[v].type==="settlement").map(Number);
+}
+
+/* ---------------- Setup phase ---------------- */
+function beginSetupTurn(){
+  applyPendingMode();
+  S.cur=S.setupQueue[S.setupIdx];
+  S.mode="setupSettlement"; S.lastSetupV=null;
+  renderAll();
+}
+function commitSettlement(vid){
+  if(S.phase==="setup"){
+    S.buildings[vid]={player:S.cur,type:"settlement"};
+    S.settlementsPlaced[S.cur]++;
+    if(S.settlementsPlaced[S.cur]===2){ // second settlement yields starting resources
+      const got=[];
+      vertices[vid].hexes.forEach(hi=>{const h=hexes[hi];if(h.resource!=="desert"){S.players[S.cur].resources[h.resource]++;S.bank[h.resource]--;S.players[S.cur].lifetimeRes++;got.push(RES_SHORT[h.resource]);}});
+      if(got.length) pushLog(PLAYER_NAMES[S.cur]+" collects "+got.join(", ")+" from the second settlement.");
+    }
+    S.lastSetupV=vid; S.mode="setupRoad";
+    updateLongestRoad(); recomputeVP();
+    FX.newBuilding=vid; SFX.play("settlement");
+    recordSnapshot(PLAYER_NAMES[S.cur]+" places a settlement.");
+    renderAll();
+    return;
+  }
+  // normal play
+  pay(S.cur,COST.settlement);
+  S.buildings[vid]={player:S.cur,type:"settlement"};
+  pushLog(PLAYER_NAMES[S.cur]+" builds a settlement.",true);
+  FX.newBuilding=vid; SFX.play("settlement");
+  S.mode=null; updateLongestRoad(); recomputeVP(); checkWin(); recordSnapshot(); renderAll();
+}
+function commitRoad(eid){
+  if(S.phase==="setup"){
+    S.roads[eid]=S.cur;
+    updateLongestRoad();
+    FX.newRoad=eid; SFX.play("road");
+    recordSnapshot(PLAYER_NAMES[S.cur]+" places a road.");
+    S.setupIdx++;
+    if(S.setupIdx<S.setupQueue.length){ beginSetupTurn(); }
+    else { // setup complete
+      S.phase="play"; S.cur=0; S.hasRolled=false; S.mode=null;
+      applyPendingMode();
+      pushLog("Setup complete — let the trading begin!",true);
+      renderAll();
+    }
+    return;
+  }
+  if(S.mode==="roadBuild"){           // free roads from a Road Building card
+    S.roads[eid]=S.cur; S.freeRoadsLeft--;
+    pushLog(PLAYER_NAMES[S.cur]+" builds a free road.",true);
+    FX.newRoad=eid; SFX.play("road");
+    updateLongestRoad(); recomputeVP(); checkWin();
+    if(S.phase==="over"){ S.mode=null; recordSnapshot(); renderAll(); return; }
+    if(!(S.freeRoadsLeft>0 && ownCount(S.cur,"road")<LIMIT.road && legalRoads(S.cur,false,null).length>0)) S.mode=null;
+    recordSnapshot();
+    renderAll();
+    return;
+  }
+  pay(S.cur,COST.road);
+  S.roads[eid]=S.cur;
+  pushLog(PLAYER_NAMES[S.cur]+" builds a road.",true);
+  FX.newRoad=eid; SFX.play("road");
+  S.mode=null; updateLongestRoad(); recomputeVP(); checkWin(); recordSnapshot(); renderAll();
+}
+function commitCity(vid){
+  pay(S.cur,COST.city);
+  S.buildings[vid].type="city";
+  pushLog(PLAYER_NAMES[S.cur]+" upgrades to a city.",true);
+  FX.newBuilding=vid; SFX.play("city");
+  S.mode=null; recomputeVP(); checkWin(); recordSnapshot(); renderAll();
+}
+function commitRobber(hi){
+  FX.robberFrom=S.robberHex;               // remember where it slides from
+  S.robberHex=hi; S.mode=null;
+  S.players[S.cur].robberMoves++;          // live stats: a robber move (from a 7 or a Knight)
+  // Opponents with a settlement or city touching the new hex are eligible to be robbed.
+  const victims=[...new Set(hexes[hi].corners.map(v=>S.buildings[v]).filter(b=>b&&b.player!==S.cur).map(b=>b.player))];
+  if(victims.length<=1){
+    finishRobber(victims[0]);           // undefined → nobody to steal from
+  } else if(isBot(S.cur)){
+    finishRobber(botPickStealTarget(victims));   // a bot resolves the choice itself
+  } else {
+    // More than one rival borders the hex — let the current player pick.
+    S.stealChoices=victims; renderAll(); openSteal();
+  }
+}
+function finishRobber(victim){
+  S.pendingRobber=false; S.mode=null; S.stealChoices=null;
+  let stole=false;
+  if(victim==null){
+    pushLog(PLAYER_NAMES[S.cur]+" moves the robber. No one to steal from here.",true);
+  } else {
+    const pool=[]; RES_ORDER.forEach(r=>{for(let k=0;k<S.players[victim].resources[r];k++)pool.push(r);});
+    if(pool.length===0){
+      pushLog(PLAYER_NAMES[S.cur]+" moves the robber, but "+PLAYER_NAMES[victim]+" has no cards to steal.",true);
+    } else {
+      const r=pool[Math.floor(Math.random()*pool.length)];
+      S.players[victim].resources[r]--; S.players[S.cur].resources[r]++;
+      S.players[S.cur].lifetimeRes++;                  // a stolen card is a card gained
+      S.players[S.cur].cardsStolen++; S.players[victim].cardsStolenFrom++;
+      stole=true;
+      pushLog(PLAYER_NAMES[S.cur]+" moves the robber and steals 1 "+RES_SHORT[r].toLowerCase()+" from "+PLAYER_NAMES[victim]+".",true);
+    }
+  }
+  SFX.play(stole?"steal":"robber");
+  recordSnapshot();
+  renderAll();
+}
+
+/* ---------------- Turn actions ---------------- */
+function rollDice(){
+  if(S.phase!=="play"||S.hasRolled) return;
+  const d1=1+Math.floor(Math.random()*6), d2=1+Math.floor(Math.random()*6);
+  S.dice=[d1,d2]; S.hasRolled=true;
+  const sum=d1+d2;
+  FX.diceRoll=true;
+  S.rollCounts[sum]++;                 // live stats: roll-frequency histogram
+  // live stats: every roll, accrue each player's expected production (their board pips / 36)
+  for(let i=0;i<S.nPlayers;i++) S.players[i].expProd+=expectedPips(i)/36;
+  if(sum===7){
+    SFX.play("roll7");
+    // A 7: first everyone over the hand limit discards, THEN the robber moves.
+    S.pendingRobber=true; S.mode=null;
+    pushLog(PLAYER_NAMES[S.cur]+" rolled a 7.",true);
+    const order=[];
+    for(let k=0;k<S.nPlayers;k++){const pi=(S.cur+k)%S.nPlayers; if(totalCards(pi)>7) order.push(pi);}
+    if(order.length){
+      S.discardQueue=order; S.discardIdx=0;
+      recordSnapshot();
+      renderAll();
+      advanceDiscards();
+      return;
+    }
+    S.mode="robber";
+    pushLog(PLAYER_NAMES[S.cur]+" — move the robber.",true);
+  } else {
+    // First tally what every player is owed per resource, without paying yet.
+    const demand={}; // res -> {byP:{player:amount}, total}
+    hexes.forEach((h,hi)=>{
+      if(h.number!==sum||hi===S.robberHex||h.resource==="desert") return;
+      h.corners.forEach(v=>{const b=S.buildings[v];
+        if(b){const amt=b.type==="city"?2:1, r=h.resource;
+          const d=demand[r]||(demand[r]={byP:{},total:0});
+          d.byP[b.player]=(d.byP[b.player]||0)+amt; d.total+=amt;}});
+    });
+    // Pay each resource out of the bank, applying the production-shortage rule per resource.
+    const gains={}, short=[];
+    RES_ORDER.forEach(r=>{
+      const d=demand[r]; if(!d) return;
+      const avail=S.bank[r];
+      const recipients=Object.keys(d.byP).map(Number);
+      if(d.total<=avail){                         // bank can pay everyone in full
+        recipients.forEach(pi=>{const a=d.byP[pi]; S.players[pi].resources[r]+=a; S.bank[r]-=a;
+          gains[pi]=gains[pi]||{}; gains[pi][r]=a;});
+      } else if(recipients.length===1){           // single claimant gets a partial payout
+        const pi=recipients[0], a=Math.min(d.byP[pi],avail);
+        if(a>0){ S.players[pi].resources[r]+=a; S.bank[r]-=a; gains[pi]=gains[pi]||{}; gains[pi][r]=a; }
+        short.push(RES_SHORT[r].toLowerCase()+" (partial)");
+      } else {                                    // several claimants, not enough for all → no one gets any
+        short.push(RES_SHORT[r].toLowerCase());
+      }
+    });
+    // live stats: tally what was actually produced, overall and per player
+    Object.keys(gains).forEach(p=>{ const g=gains[p];
+      Object.keys(g).forEach(r=>{ S.production[r]+=g[r]; S.playerProduction[p][r]+=g[r]; S.players[p].lifetimeRes+=g[r]; }); });
+    const parts=Object.keys(gains).map(p=>PLAYER_NAMES[p]+" +"+Object.keys(gains[p]).map(r=>gains[p][r]+RES_SHORT[r][0]).join(""));
+    let msg="Rolled "+sum+(parts.length?" — "+parts.join(", "):" — no production.");
+    if(short.length) msg+=" — bank short on "+short.join(", ")+".";
+    pushLog(msg,true);
+    SFX.play("roll");
+    if(parts.length) SFX.play("collect",280);    // a soft tick after the dice settle, when anyone produced
+  }
+  recordSnapshot();
+  renderAll();
+}
+function endTurn(){
+  if(S.phase!=="play"||!S.hasRolled||S.pendingRobber||S.mode==="robber"||S.mode==="roadBuild") return;
+  // Cards bought this turn become playable from the next turn onward.
+  S.players[S.cur].devNew={knight:0,vp:0,road:0,plenty:0,mono:0};
+  S.cur=(S.cur+1)%S.nPlayers; S.hasRolled=false; S.mode=null; S.dice=[null,null];
+  S.devPlayedThisTurn=false;
+  applyPendingMode();
+  // Stalemate guard: if total VP hasn't risen for many turns, an auto-play game can't progress — end it.
+  const sum=S.players.reduce((s,pl)=>s+pl.vp,0);
+  if(sum>S._stallSum){ S._stallSum=sum; S._stallTurns=0; }
+  else { S._stallTurns++; if(S._stallTurns>=STALL_LIMIT && isBot(S.cur)){ declareStalemate(); } }
+  recordSnapshot(S.phase==="over"?null:"Turn passes to "+PLAYER_NAMES[S.cur]+".");
+  renderAll();
+}
+function declareStalemate(){
+  let w=0,bv=-1;
+  S.players.forEach(p=>{ const v=p.vp*1000+totalCards(p.i); if(v>bv){bv=v;w=p.i;} });
+  S.phase="over"; S.winner=w; S.mode=null; S.pendingRobber=false;
+  pushLog("Stalemate — the board is locked and no one can reach 10. "+PLAYER_NAMES[w]+" wins on points ("+S.players[w].vp+" VP).",true);
+  showGameOverScoreboard();
+}
+function checkWin(){
+  if(S.phase==="over") return;
+  if(S.players[S.cur].vp>=10){
+    S.phase="over"; S.winner=S.cur; S.mode=null;
+    const vpc=S.players[S.cur].dev.vp;
+    pushLog(PLAYER_NAMES[S.cur]+" reaches "+S.players[S.cur].vp+" VP and wins!"+
+      (vpc?` Reveals ${vpc} Victory Point card${vpc>1?"s":""}.`:""),true);
+    SFX.play("win");
+    showGameOverScoreboard();
+  }
+}
+// True when the current player may take a turn action (buy/build/trade) — these need the roll done first.
+function canActNow(){ return S.phase==="play"&&S.hasRolled&&!S.pendingRobber&&S.mode!=="robber"&&S.mode!=="roadBuild"; }
+// True when the current player may play a development card — allowed before OR after the roll.
+function canPlayDevNow(){ return S.phase==="play"&&!S.pendingRobber&&S.mode!=="robber"&&S.mode!=="roadBuild"; }
+
+/* ---------------- Mode entry from buttons ---------------- */
+function tryMode(type){
+  if(S.phase!=="play"||!S.hasRolled||S.pendingRobber){return;}
+  if(S.mode===type){ S.mode=null; renderAll(); return; } // toggle off
+  const p=S.cur;
+  if(!canAfford(p,COST[type])){ flash("Not enough resources — a "+type+" costs "+costText(COST[type])+"."); return; }
+  let legal;
+  if(type==="settlement"){ if(ownCount(p,"settlement")>=LIMIT.settlement){flash("You've placed all 5 settlements.");return;} legal=legalSettlements(p,false); }
+  else if(type==="road"){ if(ownCount(p,"road")>=LIMIT.road){flash("You've placed all 15 roads.");return;} legal=legalRoads(p,false,null); }
+  else if(type==="city"){ if(ownCount(p,"city")>=LIMIT.city){flash("You've built all 4 cities.");return;} legal=legalCities(p); }
+  if(legal.length===0){ flash(type==="city"?"No settlement of yours to upgrade.":"No legal spot for a "+type+" right now."); return; }
+  S.mode=type; renderAll();
+}
+function flash(msg){ const pr=$("prompt"); pr.textContent=msg; pr.style.borderColor="#9c3b30"; setTimeout(()=>{pr.style.borderColor="";renderPrompt();},1900); }
+function cancelMode(){ S.mode=null; renderAll(); }
+
+/* ================= RENDERING ================= */
+const layers={};
+function drawStaticBoard(){
+  const svg=$("board"); svg.innerHTML="";
+  // defs
+  const defs=el("defs",{},svg);
+  const sea=el("radialGradient",{id:"seaGrad",cx:"42%",cy:"30%",r:"80%"},defs);
+  el("stop",{offset:"0%","stop-color":"#1c5e6c"},sea);
+  el("stop",{offset:"55%","stop-color":"#12434e"},sea);
+  el("stop",{offset:"100%","stop-color":"#0b2c34"},sea);
+  // gradients that give the open-sea waves & boats volume (sunlit tops → shadowed troughs)
+  const waveBody=el("linearGradient",{id:"waveBody",x1:"0",y1:"0",x2:"0",y2:"1"},defs);
+  el("stop",{offset:"0%","stop-color":"#4f97a6"},waveBody);   // sunlit upper face
+  el("stop",{offset:"55%","stop-color":"#236270"},waveBody);
+  el("stop",{offset:"100%","stop-color":"#0e3a44"},waveBody); // shadowed trough
+  const foamGrad=el("linearGradient",{id:"foamGrad",x1:"0",y1:"0",x2:"0",y2:"1"},defs);
+  el("stop",{offset:"0%","stop-color":"#ffffff"},foamGrad);
+  el("stop",{offset:"100%","stop-color":"#cfe8e6"},foamGrad);
+  const hullGrad=el("linearGradient",{id:"hullGrad",x1:"0",y1:"0",x2:"0",y2:"1"},defs);
+  el("stop",{offset:"0%","stop-color":"#9a6638"},hullGrad);   // sunlit gunwale
+  el("stop",{offset:"48%","stop-color":"#5e3a20"},hullGrad);
+  el("stop",{offset:"100%","stop-color":"#2c1a0e"},hullGrad); // dark waterline
+  const sailGrad=el("linearGradient",{id:"sailGrad",x1:"0",y1:"0",x2:"1",y2:"0"},defs);
+  el("stop",{offset:"0%","stop-color":"#ffffff"},sailGrad);   // lit luff
+  el("stop",{offset:"100%","stop-color":"#b9c8c9"},sailGrad); // shaded leech
+
+  // size the sea so the far-out harbour boats always fit, keeping the island centred
+  const vb=boardViewBox();
+  svg.setAttribute("viewBox",`${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  el("rect",{x:vb.x,y:vb.y,width:vb.w,height:vb.h,rx:10,fill:"url(#seaGrad)"},svg);
+  // decorative open-sea boats & waves (behind everything else, so they never cover anything)
+  drawSeaDecor(el("g",{opacity:0.72,["pointer-events"]:"none"},svg), vb);
+  // map border (decorative, on top last) — placeholder group order
+  // compass rose (in water, bottom-left)
+  drawCompass(el("g",{class:"compass"},svg),74,508,30);
+
+  // coastline frame: boundary edges as thick strokes (sand under, wood over)
+  const frame=el("g",{},svg);
+  const boundary=edges.filter(e=>e.hexes.length===1);
+  boundary.forEach(e=>{const a=vertices[e.v1],b=vertices[e.v2];
+    el("line",{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:"#cdb487",["stroke-width"]:22,["stroke-linecap"]:"round",opacity:.45},frame);});
+  boundary.forEach(e=>{const a=vertices[e.v1],b=vertices[e.v2];
+    el("line",{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:"#6b4f2e",["stroke-width"]:13,["stroke-linecap"]:"round"},frame);});
+
+  // harbours (ports) on the coast
+  drawHarbours(el("g",{},svg));
+
+  // tiles
+  const gTiles=el("g",{},svg);
+  hexes.forEach((h,hi)=>{
+    const pts=h.corners.map(c=>vertices[c].x+","+vertices[c].y).join(" ");
+    const poly=el("polygon",{points:pts,fill:TILE_COLORS[h.resource],class:"hex-poly"},gTiles);
+    poly.dataset.hi=hi;
+    // resource label (top of hex)
+    el("text",{x:h.cx,y:h.cy-R*0.52+4,class:"res-label"},gTiles).textContent=(h.resource==="desert"?"Desert":RES_LABEL[h.resource]);
+  });
+
+  // dynamic layers (created empty, filled by render)
+  layers.tokens=el("g",{},svg);
+  layers.robber=el("g",{},svg);
+  layers.roads=el("g",{},svg);
+  layers.buildings=el("g",{},svg);
+  layers.interact=el("g",{},svg);
+
+  // top map border
+  el("rect",{x:vb.x+6,y:vb.y+6,width:vb.w-12,height:vb.h-12,rx:8,fill:"none",stroke:"rgba(224,184,74,.5)",["stroke-width"]:1.5,["pointer-events"]:"none"},svg);
+  el("rect",{x:vb.x+11,y:vb.y+11,width:vb.w-22,height:vb.h-22,rx:6,fill:"none",stroke:"rgba(224,184,74,.25)",["stroke-width"]:1,["pointer-events"]:"none"},svg);
+
+  drawTokens();
+}
+// Symmetric viewBox (island centred) sized to clear the far-out harbour boats on the current board.
+function boardViewBox(){
+  let mx=0,my=0;
+  edges.filter(e=>e.hexes.length===1).forEach(e=>{
+    const a=vertices[e.v1], b=vertices[e.v2];
+    const ox=(a.x+b.x)/2, oy=(a.y+b.y)/2;
+    const ex=b.x-a.x, ey=b.y-a.y, L=Math.hypot(ex,ey)||1;
+    let nx=-ey/L, ny=ex/L; if(nx*(ox-CX0)+ny*(oy-CY0)<0){ nx=-nx; ny=-ny; }
+    const fc=54+7+22+10;                       // flag-centre distance out to sea (matches drawHarbours)
+    const fx=ox+nx*fc, fy=oy+ny*fc;
+    mx=Math.max(mx, Math.abs(fx-CX0)+21);      // flag half-width (15) + slack
+    my=Math.max(my, Math.abs(fy-CY0)+16);      // flag half-height (10) + slack
+  });
+  return {x:CX0-mx, y:CY0-my, w:2*mx, h:2*my};
+}
+function drawHarbours(g){
+  harbours.forEach(h=>{
+    const a=vertices[h.v1], b=vertices[h.v2];
+    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    // outward perpendicular bisector of the coastal edge (disc stays centred & equidistant from a,b)
+    const ex=b.x-a.x, ey=b.y-a.y, elen=Math.hypot(ex,ey)||1;
+    const tx=ex/elen, ty=ey/elen;                       // along the coast
+    let nx=-ty, ny=tx;                                  // perpendicular to the edge
+    if(nx*(mx-CX0)+ny*(my-CY0)<0){ nx=-nx; ny=-ny; }    // make it point outward, to open sea
+    const DIST=54;                                      // hull sits well out, clear of tiles & tokens
+    const cx=mx+nx*DIST, cy=my+ny*DIST;                 // hull centre, on the bisector
+    const P=(s,t)=>[cx+tx*s+nx*t, cy+ty*s+ny*t];        // local frame: s=along coast, t=out to sea
+
+    const spec=(h.type!=="3:1");
+    const discFill=spec?TILE_COLORS[h.type]:"#e8d3a6";    // resource colour, or pale sand/tan for the generic 3:1
+    const lightDisc=(h.type==="sheep"||h.type==="wheat"||h.type==="3:1"); // pale faces need dark ink; all others take cream
+    const ink=lightDisc?"#2c2117":"#f5ecd8";              // icon + ratio colour that stays legible on the disc
+
+    // two ladder-style timber piers, mirror images, from each coastal spot out to the port disc
+    drawPier(g, a.x,a.y, P(-6,-8));
+    drawPier(g, b.x,b.y, P( 6,-8));
+    el("circle",{cx:a.x,cy:a.y,r:3.6,fill:"#6f4420",stroke:"#3a2a1a",["stroke-width"]:1},g);
+    el("circle",{cx:b.x,cy:b.y,r:3.6,fill:"#6f4420",stroke:"#3a2a1a",["stroke-width"]:1},g);
+
+    // port marker: a wooden-rimmed disc at the dock's outer end, carrying the resource icon + ratio
+    // (sized so the ratio text and resource icon both sit comfortably inside, clear of the rim)
+    const dc=P(0,7), dx2=dc[0], dy2=dc[1], RAD=17.5;
+    el("circle",{cx:dx2,cy:dy2,r:RAD,fill:"#8a5a2b",stroke:"#3a2a1a",["stroke-width"]:1.4},g);   // wooden rim
+    el("circle",{cx:dx2,cy:dy2,r:RAD-3,fill:discFill,stroke:"#6f4420",["stroke-width"]:0.8},g);  // resource face
+    drawPortIcon(g, spec?h.type:"anchor", dx2, dy2-4, 14, ink);
+    el("text",{x:dx2,y:dy2+8.5,["text-anchor"]:"middle",["dominant-baseline"]:"central",
+      ["font-family"]:"'Cinzel',serif",["font-weight"]:700,["font-size"]:8.5,fill:ink},g)
+      .textContent=spec?"2:1":"3:1";
+  });
+}
+// A ladder/boardwalk jetty from a coastal spot (x1,y1) out to the dock head [x2,y2]:
+// two parallel timber rails with a few shorter cross-rungs (ties) spanning between them.
+function drawPier(g, x1,y1, [x2,y2]){
+  const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy)||1;
+  const ux=dx/len, uy=dy/len, px=-uy, py=ux;            // along & across the jetty
+  const HW=3.4;                                         // rail half-spacing
+  const c=(s,w)=>[x1+ux*s+px*w, y1+uy*s+py*w];
+  // cross-rungs (ties) first, so the rails sit over them — lighter wood
+  const rungs=Math.max(2,Math.round(len/8));
+  for(let i=1;i<rungs;i++){const s=len*i/rungs, e1=c(s,HW), e2=c(s,-HW);
+    el("line",{x1:e1[0],y1:e1[1],x2:e2[0],y2:e2[1],stroke:"#c08850",["stroke-width"]:2.1,["stroke-linecap"]:"round"},g);}
+  // two parallel rails: a darker brown edge under a medium wood-brown rail
+  [HW,-HW].forEach(w=>{const a=c(0,w), b=c(len,w);
+    el("line",{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:"#6f4420",["stroke-width"]:3.2,["stroke-linecap"]:"round"},g);
+    el("line",{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:"#a86c38",["stroke-width"]:1.8,["stroke-linecap"]:"round"},g);});
+}
+// Self-contained SVG resource icons drawn straight onto the board (no emoji / icon font),
+// centred at (cx,cy) within a size×size box, in a single legible colour.
+function drawPortIcon(g, type, cx, cy, size, color){
+  const gi=el("g",{transform:`translate(${cx},${cy}) scale(${size/24}) translate(-12,-12)`},g);
+  const F=a=>el("path",Object.assign({fill:color},a),gi);
+  const S=a=>el("path",Object.assign({fill:"none",stroke:color,["stroke-width"]:2,["stroke-linecap"]:"round",["stroke-linejoin"]:"round"},a),gi);
+  if(type==="wood"){            // pine tree
+    F({d:"M12 2 L5.5 12 H18.5 Z"});
+    F({d:"M12 7 L5 17 H19 Z"});
+    el("rect",{x:10.5,y:16,width:3,height:6,fill:color},gi);
+  }else if(type==="brick"){     // staggered brick courses
+    S({d:"M4 7 H20 V17 H4 Z"});
+    S({d:"M4 12 H20"});
+    S({d:"M12 7 V12"});
+    S({d:"M8 12 V17"}); S({d:"M16 12 V17"});
+  }else if(type==="sheep"){     // woolly body + head
+    el("ellipse",{cx:10.5,cy:13,rx:6.2,ry:4.6,fill:color},gi);
+    el("circle",{cx:17,cy:11.5,r:2.6,fill:color},gi);
+    S({d:"M8 17 V20"}); S({d:"M13 17 V20"});
+  }else if(type==="wheat"){     // sheaf of three stalks
+    S({d:"M12 21 L9 9"}); S({d:"M12 21 V8"}); S({d:"M12 21 L15 9"});
+    el("ellipse",{cx:9,cy:6.5,rx:1.7,ry:3.2,fill:color,transform:"rotate(-14 9 6.5)"},gi);
+    el("ellipse",{cx:12,cy:5.5,rx:1.7,ry:3.2,fill:color},gi);
+    el("ellipse",{cx:15,cy:6.5,rx:1.7,ry:3.2,fill:color,transform:"rotate(14 15 6.5)"},gi);
+    S({d:"M9 16 H15"});
+  }else if(type==="ore"){       // mountain range
+    F({d:"M2 20 L9 7 L13 14 L16 9 L22 20 Z"});
+  }else{                        // anchor (generic 3:1)
+    el("circle",{cx:12,cy:5,r:2.2,fill:"none",stroke:color,["stroke-width"]:2},gi);
+    S({d:"M12 7 V21"});
+    S({d:"M5 13 a7 7 0 0 0 14 0"});
+    S({d:"M4 13 H6.5 M17.5 13 H20"});
+  }
+}
+function drawCompass(g,cx,cy,r){
+  // 8-point star
+  const pts=[];
+  for(let k=0;k<8;k++){const ang=(k*45-90)*Math.PI/180;const rr=(k%2===0)?r:r*0.4;pts.push((cx+rr*Math.cos(ang))+","+(cy+rr*Math.sin(ang)));}
+  el("polygon",{points:pts.join(" "),fill:"rgba(224,184,74,.12)",stroke:"rgba(224,184,74,.45)",["stroke-width"]:1},g);
+  el("circle",{cx,cy,r:r*0.16,fill:"rgba(224,184,74,.5)"},g);
+  el("text",{x:cx,y:cy-r-7},g).textContent="N";
+  el("text",{x:cx,y:cy+r+7},g).textContent="S";
+  el("text",{x:cx+r+8,y:cy},g).textContent="E";
+  el("text",{x:cx-r-8,y:cy},g).textContent="W";
+}
+// Static open-sea decoration: volumetric little sailboats and foam-crested waves (whitecaps)
+// scattered across the open water, kept clear of the island, docks, port discs and compass rose,
+// and drawn behind everything else so they never cover the island or harbours.
+function drawSeaDecor(g, vb){
+  // farthest reach of any dock / port disc from the board centre, so we can stay outside it
+  let safeR=120;
+  edges.filter(e=>e.hexes.length===1).forEach(e=>{
+    const a=vertices[e.v1], b=vertices[e.v2];
+    const ox=(a.x+b.x)/2, oy=(a.y+b.y)/2;
+    const ex=b.x-a.x, ey=b.y-a.y, L=Math.hypot(ex,ey)||1;
+    let nx=-ey/L, ny=ex/L; if(nx*(ox-CX0)+ny*(oy-CY0)<0){ nx=-nx; ny=-ny; }
+    const fx=ox+nx*61, fy=oy+ny*61;                       // port-disc centre (matches drawHarbours)
+    safeR=Math.max(safeR, Math.hypot(fx-CX0,fy-CY0)+28);  // + disc radius + slack
+  });
+  const compass={x:74,y:508,r:56};
+  // open water = outside island/dock reach, off the compass rose, and inside the frame margins
+  const open=(x,y)=> Math.hypot(x-CX0,y-CY0) >= safeR
+                  && Math.hypot(x-compass.x,y-compass.y) >= compass.r
+                  && x>vb.x+22 && x<vb.x+vb.w-22 && y>vb.y+22 && y<vb.y+vb.h-22;
+
+  // deterministic pseudo-random so the scene is stable between renders
+  let rnd=20240607;
+  const rand=()=>{ rnd=(rnd*9301+49297)%233280; return rnd/233280; };
+
+  // foam-crested swells spread across the whole open sea (drawn first, boats ride over them)
+  for(let i=0;i<48;i++){
+    const x=vb.x+vb.w*(0.04+0.92*rand()), y=vb.y+vb.h*(0.04+0.92*rand());
+    if(!open(x,y)) continue;
+    drawWave(g, x, y, 8+rand()*9, rand()<0.5?-1:1, i);
+  }
+
+  // a handful of little sailboats out in the open water, spread around the island
+  const boats=[
+    {x:vb.x+vb.w*0.10,  y:vb.y+vb.h*0.11,  s:1.05, flip:0},   // top-left
+    {x:vb.x+vb.w*0.90,  y:vb.y+vb.h*0.085, s:0.9,  flip:1},   // top-right
+    {x:vb.x+vb.w*0.925, y:vb.y+vb.h*0.90,  s:1.1,  flip:1},   // bottom-right
+    {x:vb.x+vb.w*0.21,  y:vb.y+vb.h*0.925, s:0.85, flip:0},   // bottom-left-ish
+    {x:vb.x+vb.w*0.50,  y:vb.y+vb.h*0.05,  s:0.8,  flip:0},   // top-middle
+    {x:vb.x+vb.w*0.965, y:vb.y+vb.h*0.45,  s:0.95, flip:1},   // right-middle
+    {x:vb.x+vb.w*0.04,  y:vb.y+vb.h*0.42,  s:0.9,  flip:0},   // left-middle
+    {x:vb.x+vb.w*0.30,  y:vb.y+vb.h*0.05,  s:0.7,  flip:1},   // top, left of centre
+    {x:vb.x+vb.w*0.72,  y:vb.y+vb.h*0.055, s:0.78, flip:1},   // top, right of centre
+    {x:vb.x+vb.w*0.055, y:vb.y+vb.h*0.78,  s:0.82, flip:0},   // lower-left
+    {x:vb.x+vb.w*0.50,  y:vb.y+vb.h*0.955, s:0.85, flip:1},   // bottom-middle
+    {x:vb.x+vb.w*0.73,  y:vb.y+vb.h*0.94,  s:0.72, flip:0},   // bottom, right of centre
+    {x:vb.x+vb.w*0.95,  y:vb.y+vb.h*0.20,  s:0.75, flip:1},   // upper-right
+    {x:vb.x+vb.w*0.93,  y:vb.y+vb.h*0.68,  s:0.88, flip:1},   // right, lower
+  ];
+  boats.forEach((b,i)=>{ if(open(b.x,b.y)) drawBoat(g,b.x,b.y,b.s,b.flip,i); });
+}
+// A foam-crested swell: a curved body in light→dark sea tones with a white whitecap riding the
+// crest and a little spray. `dir` (±1) mirrors it so the waves don't all break the same way.
+function drawWave(g,x,y,w,dir,seed){
+  const half=w/2, h=w*0.6;
+  const wg=el("g",{transform:`translate(${x},${y})${dir<0?" scale(-1,1)":""}`},g);
+  // swell body — a rounded mound of water; vertical gradient gives it volume (lit top, dark belly)
+  el("path",{d:`M${-half},2 Q${-half*0.5},${-h} 0,${-h*0.85} `
+              +`Q${half*0.5},${-h*0.72} ${half},2 Q0,${h*0.5} ${-half},2 Z`,
+    fill:"url(#waveBody)",stroke:"#0c333c",["stroke-width"]:0.4,opacity:0.96},wg);
+  // soft inner shadow under the crest for depth
+  el("path",{d:`M${-half*0.6},${-h*0.2} Q0,${h*0.35} ${half*0.6},${-h*0.2}`,
+    fill:"none",stroke:"#0b303a",["stroke-width"]:1.4,["stroke-linecap"]:"round",opacity:0.5},wg);
+  // foam crest (whitecap) — a soft off-white ridge under a brighter white highlight
+  const crest=`M${-half*0.74},${-h*0.34} Q${-half*0.3},${-h*0.98} 0,${-h*0.86} `
+             +`Q${half*0.4},${-h*0.78} ${half*0.76},${-h*0.28}`;
+  el("path",{d:crest,fill:"none",stroke:"url(#foamGrad)",["stroke-width"]:3,["stroke-linecap"]:"round",opacity:0.95},wg);
+  el("path",{d:crest,fill:"none",stroke:"#ffffff",["stroke-width"]:1.2,["stroke-linecap"]:"round"},wg);
+  // a curl of foam at the breaking lip + a touch of spray
+  el("circle",{cx:half*0.74,cy:-h*0.3,r:1.6,fill:"#ffffff",opacity:0.95},wg);
+  if(seed%2===0){
+    el("circle",{cx:half*0.5,cy:-h*1.02,r:0.95,fill:"#ffffff",opacity:0.8},wg);
+    el("circle",{cx:half*0.16,cy:-h*1.12,r:0.7,fill:"#eef9f8",opacity:0.7},wg);
+  }
+}
+// A little sailboat with volume: a shaded hull (lit gunwale → dark waterline), a sail with a lit
+// and a shadow side, a small white foam wake at the bow, and a soft shadow/reflection on the water.
+function drawBoat(g,x,y,s,flip,seed){
+  const bg=el("g",{transform:`translate(${x},${y}) scale(${flip?-s:s},${s})`},g);
+  const hw=10;
+  // soft shadow / reflection on the water beneath the hull
+  el("ellipse",{cx:0,cy:8,rx:hw*1.05,ry:3.2,fill:"#06222a",opacity:0.4},bg);
+  el("path",{d:`M1,7 L7,16 L1,16 Z`,fill:"#0b2f38",opacity:0.28},bg);     // faint sail reflection
+  // white foam wake curling off the bow
+  el("path",{d:`M${hw-1.5},2.5 q5,0.8 7.5,3 q-4.5,0.7 -7.5,-0.6 Z`,fill:"#ffffff",opacity:0.85},bg);
+  el("path",{d:`M${hw-0.5},1.5 q3,-0.4 5,0.4`,fill:"none",stroke:"#eaf6f5",["stroke-width"]:0.9,["stroke-linecap"]:"round",opacity:0.7},bg);
+  // hull — lit gunwale down to a dark waterline (gradient = volume)
+  el("path",{d:`M${-hw},0 Q0,-2 ${hw},0 Q${hw-1},4.6 0,6.2 Q${-hw+1},4.6 ${-hw},0 Z`,
+    fill:"url(#hullGrad)",stroke:"#241408",["stroke-width"]:0.5},bg);
+  el("path",{d:`M${-hw+1.6},0.5 Q0,-0.9 ${hw-1.6},0.5`,fill:"none",stroke:"#c08b53",["stroke-width"]:0.9,["stroke-linecap"]:"round",opacity:0.85},bg); // deck highlight
+  // mast
+  el("line",{x1:0.6,y1:-1,x2:0.6,y2:-17,stroke:"#3a2a1a",["stroke-width"]:1.1,["stroke-linecap"]:"round"},bg);
+  // mainsail — lit luff to shaded leech, with a bright highlight strip along the mast for belly
+  el("path",{d:`M1.5,-16.2 C5,-12 7.6,-6 8.2,-1 L1.5,-1 Z`,fill:"url(#sailGrad)",stroke:"#9aa8a9",["stroke-width"]:0.4},bg);
+  el("path",{d:`M1.5,-16.2 C3.1,-11 3.5,-6 3.7,-1 L1.5,-1 Z`,fill:"#ffffff",opacity:0.5},bg);
+  // jib — small foresail with its own shadow side
+  el("path",{d:`M-0.4,-13.2 C-3,-9 -4.6,-4 -5.1,-1 L-0.4,-1 Z`,fill:"url(#sailGrad)",stroke:"#9aa8a9",["stroke-width"]:0.35},bg);
+  el("path",{d:`M-0.4,-13.2 C-1.7,-8 -2.1,-4 -2.3,-1 L-0.4,-1 Z`,fill:"#7f9a9b",opacity:0.4},bg);
+  // pennant at the masthead
+  el("path",{d:`M0.6,-17 l3,1 l-3,1 Z`,fill:"#c9533f"},bg);
+}
+function drawTokens(){
+  layers.tokens.innerHTML="";
+  hexes.forEach((h,hi)=>{
+    if(h.number===null) return;
+    el("circle",{cx:h.cx,cy:h.cy+6,r:15,class:"tok-circle"},layers.tokens);
+    const t=el("text",{x:h.cx,y:h.cy+6,class:"tok-text"+((h.number===6||h.number===8)?" red":""),["font-size"]:(h.number>=10?13:15)},layers.tokens);
+    t.textContent=h.number;
+  });
+}
+function pieceSettlement(x,y,color,pop){
+  const g=el("g",{transform:`translate(${x},${y})`});
+  // pop class goes on the path (transform-box:fill-box) so the scale never disturbs the group's position
+  el("path",{d:"M0,-9 L8,-2 L8,8 L-8,8 L-8,-2 Z",fill:color,class:"piece"+(pop?" piece-pop":"")},g);
+  return g;
+}
+function pieceCity(x,y,color,pop){
+  const g=el("g",{transform:`translate(${x},${y})`});
+  el("path",{d:"M-11,9 L-11,-1 L-3,-1 L-3,-6 L4,-11 L11,-6 L11,9 Z",fill:color,class:"piece"+(pop?" piece-pop":"")},g);
+  el("rect",{x:-8,y:1,width:5,height:5,fill:"rgba(0,0,0,.20)"},g);
+  return g;
+}
+function renderPieces(){
+  layers.robber.innerHTML=""; layers.roads.innerHTML=""; layers.buildings.innerHTML="";
+  const animate=!reduceMotion()&&!REPLAY.viewing;
+  // robber
+  const rh=hexes[S.robberHex], rx=rh.cx, ry=rh.cy+24;
+  const rg=el("g",{},layers.robber);
+  el("ellipse",{cx:0,cy:9,rx:9,ry:4,fill:"rgba(0,0,0,.30)"},rg);
+  el("path",{d:"M-7,9 C-7,2 -5,-1 -4,-4 C-7,-6 -6,-12 0,-12 C6,-12 7,-6 4,-4 C5,-1 7,2 7,9 Z",fill:"var(--robber)",stroke:"#000","stroke-width":1},rg);
+  if(animate && FX.robberFrom!=null && FX.robberFrom!==S.robberHex){
+    const from=hexes[FX.robberFrom];
+    rg.style.transform=`translate(${from.cx}px,${from.cy+24}px)`;
+    rg.classList.add("robber-slide");
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{ rg.style.transform=`translate(${rx}px,${ry}px)`; }));
+  } else {
+    rg.setAttribute("transform",`translate(${rx},${ry})`);
+  }
+  FX.robberFrom=null;
+  // roads
+  for(const eid in S.roads){
+    const e=edges[eid], a=vertices[e.v1], b=vertices[e.v2];
+    const ix=a.x+(b.x-a.x)*0.18, iy=a.y+(b.y-a.y)*0.18, jx=b.x-(b.x-a.x)*0.18, jy=b.y-(b.y-a.y)*0.18;
+    const isNew=animate && String(eid)===String(FX.newRoad);
+    const cls="road-line"+(isNew?" road-draw":"");
+    el("line",{x1:ix,y1:iy,x2:jx,y2:jy,stroke:"var(--wood-dark)",["stroke-width"]:9,class:cls},layers.roads);
+    el("line",{x1:ix,y1:iy,x2:jx,y2:jy,stroke:PLAYER_COLORS[S.roads[eid]],["stroke-width"]:6,class:cls},layers.roads);
+  }
+  FX.newRoad=null;
+  // buildings
+  for(const vid in S.buildings){
+    const b=S.buildings[vid], v=vertices[vid];
+    const pop=animate && String(vid)===String(FX.newBuilding);
+    const g=b.type==="city"?pieceCity(v.x,v.y,PLAYER_COLORS[b.player],pop):pieceSettlement(v.x,v.y,PLAYER_COLORS[b.player],pop);
+    layers.buildings.appendChild(g);
+  }
+  FX.newBuilding=null;
+}
+function renderInteract(){
+  layers.interact.innerHTML="";
+  if(isBot(S.cur)) return;            // bots act programmatically — no clickable candidates
+  const p=S.cur, m=S.mode;
+  if(m==="setupSettlement"||m==="settlement"){
+    legalSettlements(p,m==="setupSettlement").forEach(vid=>{
+      const v=vertices[vid];
+      const c=el("circle",{cx:v.x,cy:v.y,r:11,class:"cand-dot pulse"},layers.interact);
+      const hit=el("circle",{cx:v.x,cy:v.y,r:14,fill:"transparent",class:"cand"},layers.interact);
+      hit.addEventListener("click",()=>commitSettlement(vid));
+    });
+  } else if(m==="setupRoad"||m==="road"||m==="roadBuild"){
+    legalRoads(p,m==="setupRoad",S.lastSetupV).forEach(eid=>{
+      const e=edges[eid],a=vertices[e.v1],b=vertices[e.v2];
+      el("line",{x1:a.x,y1:a.y,x2:b.x,y2:b.y,class:"cand-road pulse"},layers.interact);
+      const hit=el("line",{x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:"transparent",["stroke-width"]:16,class:"cand"},layers.interact);
+      hit.addEventListener("click",()=>commitRoad(eid));
+    });
+  } else if(m==="city"){
+    legalCities(p).forEach(vid=>{
+      const v=vertices[vid];
+      el("circle",{cx:v.x,cy:v.y,r:14,class:"cand-ring pulse"},layers.interact);
+      const hit=el("circle",{cx:v.x,cy:v.y,r:15,fill:"transparent",class:"cand"},layers.interact);
+      hit.addEventListener("click",()=>commitCity(vid));
+    });
+  } else if(m==="robber"){
+    hexes.forEach((h,hi)=>{ if(hi===S.robberHex)return;
+      const pts=h.corners.map(c=>vertices[c].x+","+vertices[c].y).join(" ");
+      const poly=el("polygon",{points:pts,class:"cand-hex pulse cand"},layers.interact);
+      poly.addEventListener("click",()=>commitRobber(hi));
+    });
+  }
+}
+
+/* ---------- Panel ---------- */
+function diceHTML(n){
+  const map={1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+  let s="";for(let i=0;i<9;i++)s+=`<span class="pip ${n&&map[n].includes(i)?"on":""}"></span>`;return `<div class="die">${s}</div>`;
+}
+function renderDice(){
+  const d=$("dice");
+  d.innerHTML=diceHTML(S.dice[0])+diceHTML(S.dice[1]);
+  const sum=(S.dice[0]&&S.dice[1])?S.dice[0]+S.dice[1]:null;
+  $("sum").innerHTML=(sum?sum:"–")+"<small>"+(sum?"Rolled":"Roll")+"</small>";
+  if(FX.diceRoll && !reduceMotion() && !REPLAY.viewing){
+    d.classList.remove("rolling"); void d.offsetWidth; d.classList.add("rolling");   // restart the tumble
+  }
+  FX.diceRoll=false;
+}
+function renderPlayers(){
+  const box=$("players"); box.innerHTML="";
+  const bumpOk=!reduceMotion()&&!REPLAY.viewing&&FX.prevRes;
+  S.players.forEach(pl=>{
+    const active=(pl.i===S.cur);
+    const card=document.createElement("div"); card.className="pcard"+(active?" active":"");
+    card.style.setProperty("--pcol", PLAYER_COLORS[pl.i]);   // own colour, used for the active-card border
+    // Header awards — shown only while the player currently holds them.
+    let badges="";
+    if(S.longestRoad===pl.i) badges+=`<span class="pc-badge" title="Longest Road (+2 VP)">${PC_ICONS.road} +2</span>`;
+    if(S.largestArmy===pl.i) badges+=`<span class="pc-badge" title="Largest Army (+2 VP)">${PC_ICONS.army} +2</span>`;
+    // Resources bar — five equal cells in their tile colours.
+    let cells="";
+    const prev=FX.prevRes?FX.prevRes[pl.i]:null;
+    RES_ORDER.forEach(r=>{
+      const inc=bumpOk&&prev&&pl.resources[r]>prev[r];     // tick up only when a count actually grew
+      const dark=(r==='sheep'||r==='wheat');               // light tiles need dark text
+      cells+=`<div class="pc-cell${inc?" bump":""}" style="background:${TILE_COLORS[r]};color:${dark?'#3a2e10':'#fff'}">`+
+        `<span class="rl">${RES_SHORT[r]}</span><span class="rn">${pl.resources[r]}</span></div>`;});
+    // Ports — one token per distinct type, generic 3:1 first then 2:1 ports in resource order.
+    const hTypes=new Set(playerHarbours(pl.i).map(h=>h.type));
+    let tokens="";
+    if(hTypes.has("3:1")) tokens+=`<span class="pc-token" title="Generic 3:1 port">${PC_ICONS.anchor} 3:1 Any</span>`;
+    RES_ORDER.forEach(r=>{ if(hTypes.has(r)) tokens+=`<span class="pc-token" title="2:1 ${RES_SHORT[r]} port"><span class="dot" style="background:${TILE_COLORS[r]}"></span> 2:1 ${PORT_SHORT[r]}</span>`; });
+    const devHeld=DEV_ALL.reduce((s,t)=>s+pl.dev[t],0);
+    card.innerHTML=`
+      <div class="pc-head">
+        <span class="pc-swatch" style="background:${PLAYER_COLORS[pl.i]}"></span>
+        <span class="pc-name">${PLAYER_NAMES[pl.i]}</span>
+        <span class="pc-badges">${badges}</span>
+        <span class="pc-vp" title="Victory points"><span class="n">${pl.vp}</span><span class="l">VP</span></span>
+      </div>
+      <div class="pc-res">${cells}</div>
+      <div class="pc-stats">
+        <span class="pc-stat" title="Resource cards in hand">${PC_ICONS.cards}<b>${totalCards(pl.i)}</b> cards</span>
+        <span class="pc-stat" title="Longest road length">${PC_ICONS.road}<b>${pl.roadLen||0}</b> road</span>
+        <span class="pc-stat" title="Development cards held">${PC_ICONS.dev}<b>${devHeld}</b> dev</span>
+        <span class="pc-stat" title="Knights played">${PC_ICONS.knight}<b>${pl.playedKnights}</b> knights</span>
+      </div>
+      <div class="pc-ports">
+        <span class="pc-ports-lab">Ports</span>
+        ${tokens?`<span class="pc-tokens">${tokens}</span>`:""}
+      </div>`;
+    box.appendChild(card);
+  });
+  // Remember the live counts so the next render can detect (and bump) increases.
+  if(!REPLAY.viewing) FX.prevRes=S.players.map(pl=>Object.assign({},pl.resources));
+}
+function renderPrompt(){
+  const pr=$("prompt"); let t="";
+  if(S.phase==="setup"){
+    const who=PLAYER_NAMES[S.cur];
+    const round=S.setupIdx<S.nPlayers?"first":"second";
+    if(S.mode==="setupSettlement") t=`<strong>${who}</strong>, place your ${round} settlement. Tap a glowing spot on the island.`;
+    else t=`<strong>${who}</strong>, place a road touching that settlement.`;
+  } else if(S.phase==="over"){
+    t=`<strong>${PLAYER_NAMES[S.winner]}</strong> wins with 10 victory points! 🏆`;
+  } else {
+    const who=PLAYER_NAMES[S.cur];
+    if(S.pendingRobber) t=`<strong>${who}</strong> rolled a 7 — tap a hex to move the robber.`;
+    else if(S.mode==="robber") t=`<strong>${who}</strong> played a Knight — tap a hex to move the robber and steal.`;
+    else if(S.mode==="roadBuild") t=`<strong>${who}</strong>, place ${S.freeRoadsLeft} free road${S.freeRoadsLeft===1?"":"s"} (Road Building).`;
+    else if(S.mode==="settlement") t="Tap a glowing intersection to build your settlement.";
+    else if(S.mode==="road") t="Tap a glowing slot to build your road.";
+    else if(S.mode==="city") t="Tap one of your settlements to upgrade it to a city.";
+    else if(!S.hasRolled) t=`<strong>${who}'s</strong> turn — roll the dice to begin.`;
+    else t=`<strong>${who}</strong>, build what you can, then end your turn.`;
+  }
+  pr.innerHTML=t;
+}
+function renderActions(){
+  const box=$("actions"); box.innerHTML="";
+  const mk=(label,cls,handler,disabled,sub)=>{
+    const b=document.createElement("button");
+    b.className="btn "+cls; b.disabled=!!disabled;
+    b.innerHTML=label+(sub?`<span class="cost">${sub}</span>`:"");
+    if(!disabled) b.addEventListener("click",handler); box.appendChild(b); return b;
+  };
+  if(S.phase==="setup"){
+    const tip=document.createElement("div"); tip.className="btn span2"; tip.style.cssText="background:transparent;border:0;color:var(--ink-soft);font-weight:500;cursor:default;font-size:11.5px;";
+    tip.textContent="Setup round — placing starting settlements & roads.";
+    box.appendChild(tip); return;
+  }
+  if(S.phase==="over"){ mk("Play again","primary span2",()=>{renderSetup();$("overlay").classList.remove("hidden");}); return; }
+
+  if(isBot(S.cur)){
+    const tip=document.createElement("div"); tip.className="bot-tip"; tip.style.gridColumn="span 2";
+    tip.textContent="🤖 "+PLAYER_NAMES[S.cur]+(paused?" — paused":" is playing…");
+    box.appendChild(tip); return;
+  }
+
+  const canAct=canActNow();
+  const p=S.cur;
+  mk("Roll dice","primary span2",rollDice,S.hasRolled||S.pendingRobber);
+  mk("Build road","",()=>tryMode("road"),!canAct,"1 wood · 1 brick");
+  mk("Build settlement","",()=>tryMode("settlement"),!canAct,"wood·brick·sheep·wheat");
+  mk("Build city","",()=>tryMode("city"),!canAct,"3 ore · 2 wheat");
+  mk("Trade","",openTrade,!canAct,"bank · harbour · player");
+  const deckEmpty=S.deck.length===0;
+  mk("Buy dev card","",buyDev,!canAct||deckEmpty||!canAfford(p,COST.dev),
+    deckEmpty?"deck empty":"1 ore · 1 wheat · 1 sheep");
+  const playable=DEV_TYPES.reduce((s,t)=>s+(S.players[p].dev[t]-S.players[p].devNew[t]),0);
+  mk("Play dev card","",openDevPlay,!canPlayDevNow()||S.devPlayedThisTurn||playable<=0,
+    S.devPlayedThisTurn?"one per turn":"knight · roads · plenty · mono");
+  mk("End turn","span2",endTurn,!canAct);
+  if(S.mode&&S.mode!=="robber"&&S.mode!=="roadBuild") mk("Cancel placement","cancel span2",cancelMode);
+}
+function renderLog(){
+  const box=$("log"); box.innerHTML="";
+  S.log.slice(-7).reverse().forEach((l,idx)=>{const d=document.createElement("div");
+    if(idx===0&&l.now)d.className="now"; d.textContent=l.msg; box.appendChild(d);});
+}
+function renderBank(){
+  const box=$("bank"); if(!box||!S||!S.bank) return;
+  let html=`<span class="bank-lab">Bank</span>`;
+  RES_ORDER.forEach(r=>{
+    const n=S.bank[r], dark=(r==='sheep'||r==='wheat');
+    const cls="bank-chip"+(n===0?" out":(n<=2?" low":""));
+    html+=`<span class="${cls}" style="background:${TILE_COLORS[r]};${dark?'color:#3a2e10;':''}" title="${RES_LABEL[r]} left in the bank"><span class="bc-lab">${RES_SHORT[r]}</span>${n}</span>`;
+  });
+  box.innerHTML=html;
+}
+/* ---------------- Live statistics view ---------------- */
+let currentView="board";                          // "board" | "stats"
+function showView(v){
+  currentView=v;
+  const onStats=(v==="stats");
+  $("board").style.display=onStats?"none":"block";
+  $("statsView").style.display=onStats?"block":"none";
+  $("tabBoard").classList.toggle("sel",!onStats);
+  $("tabStats").classList.toggle("sel",onStats);
+  if(onStats) renderStats();
+}
+// Expected shares of 36 rolls, indexed by total: 2&12=1, 3&11=2 … 7=6.
+const ROLL_EXPECT=[0,0,1,2,3,4,5,6,5,4,3,2,1];
+function renderStats(){
+  const box=$("statsView"); if(!box || currentView!=="stats") return;   // only build when visible
+  if(!S){ box.innerHTML=`<div class="stats-block"><div class="stats-empty">Start a game to see live statistics.</div></div>`; return; }
+  box.innerHTML=diceStatsHTML()+prodStatsHTML()+playerStatsHTML();
+}
+function diceStatsHTML(){
+  const counts=S.rollCounts;
+  const total=counts.reduce((a,b)=>a+b,0), sevens=counts[7];
+  // scale so the tallest bar AND the tallest expected marker both fit
+  let maxCount=0; for(let n=2;n<=12;n++) maxCount=Math.max(maxCount,counts[n]);
+  const scale=Math.max(maxCount,(6/36)*total,1);
+  let cols="";
+  for(let n=2;n<=12;n++){
+    const c=counts[n], exp=(ROLL_EXPECT[n]/36)*total;
+    const barH=(c/scale)*100, expB=(exp/scale)*100;
+    cols+=`<div class="hist-col">
+        <div class="hist-count">${c}</div>
+        <div class="hist-bar-area">
+          <div class="hist-bar${n===7?' seven':''}" style="height:${barH}%"></div>
+          ${total>0?`<div class="hist-exp" style="bottom:${expB}%" title="Theoretical: ${exp.toFixed(1)}"></div>`:""}
+        </div>
+        <div class="hist-num">${n}</div>
+      </div>`;
+  }
+  return `<div class="stats-block">
+      <div class="stats-h">Dice Rolls</div>
+      <div class="stats-sub"><b>${total}</b> roll${total===1?'':'s'} so far · <b>${sevens}</b> seven${sevens===1?'':'s'}</div>
+      <div class="hist">${cols}</div>
+      <div class="hist-legend"><span class="ln"></span> theoretical probability (expected count at this many rolls)</div>
+    </div>`;
+}
+function prodStatsHTML(){
+  let chips="";
+  RES_ORDER.forEach(r=>{const dark=(r==='sheep'||r==='wheat');
+    chips+=`<span class="prod-chip" style="background:${TILE_COLORS[r]};${dark?'color:#3a2e10;':''}"><span class="pc-lab">${RES_SHORT[r]}</span>${S.production[r]}</span>`;});
+  let head=`<th class="who">Player</th>`;
+  RES_ORDER.forEach(r=>{head+=`<th>${RES_SHORT[r]}</th>`;});
+  head+=`<th>Total</th>`;
+  let rows="";
+  S.players.forEach(pl=>{
+    const pp=S.playerProduction[pl.i]; let cells="", tot=0;
+    RES_ORDER.forEach(r=>{const v=pp[r]; tot+=v; cells+=`<td class="num${v===0?' zero':''}">${v}</td>`;});
+    rows+=`<tr>
+        <td class="who"><span class="prod-who"><span class="swatch" style="background:${PLAYER_COLORS[pl.i]}"></span>${PLAYER_NAMES[pl.i]}</span></td>
+        ${cells}<td class="num">${tot}</td>
+      </tr>`;
+  });
+  return `<div class="stats-block">
+      <div class="stats-h">Resource Production</div>
+      <div class="stats-sub">Resources players have collected from dice rolls.</div>
+      <div class="prod-chips">${chips}</div>
+      <table class="prod-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+}
+// A small key/value line inside a player stat card.
+function pstatRow(k,v,cls){ return `<div class="pstat-row"><span class="pr-k">${k}</span><span class="pr-v${cls?(" "+cls):""}">${v}</span></div>`; }
+function playerStatsHTML(final=false){
+  const cards=S.players.map(pl=>{
+    const i=pl.i;
+    const settle=ownCount(i,"settlement"), city=ownCount(i,"city"), roads=ownCount(i,"road");
+    const lrVP=(S.longestRoad===i)?2:0, laVP=(S.largestArmy===i)?2:0;
+    const vpCards=final?pl.dev.vp:0;
+    const pubVP=settle*1+city*2+lrVP+laVP;
+    const dispVP=pubVP+vpCards;
+    const held=Object.values(pl.dev).reduce((a,b)=>a+b,0);   // total dev cards in hand (incl. hidden VP)
+    const inHand=totalCards(i);
+    const actual=RES_ORDER.reduce((s,r)=>s+S.playerProduction[i][r],0);
+    const exp=pl.expProd, diff=actual-exp;
+    const sign=diff>=0?"+":"−", diffCls=Math.abs(diff)<0.05?"muted":(diff>0?"lucky":"unlucky");
+    const vpRows=
+      pstatRow("Settlements",settle,settle?"":"muted")+
+      pstatRow("Cities (×2)",city*2,city?"":"muted")+
+      pstatRow("Longest Road",lrVP?`+2 <span class="award pstat-award">⛏ road</span>`:"—",lrVP?"":"muted")+
+      pstatRow("Largest Army",laVP?`+2 <span class="award pstat-award">⚔ army</span>`:"—",laVP?"":"muted")+
+      (final?pstatRow("VP Cards (revealed)",vpCards,vpCards?"vp-card-row":"muted"):"");
+    return `<div class="pstat-card">
+      <div class="pstat-head">
+        <span class="swatch" style="background:${PLAYER_COLORS[i]}"></span>
+        <span class="pstat-name">${PLAYER_NAMES[i]}</span>
+        <span class="pstat-vp">${dispVP} <small>VP</small></span>
+      </div>
+      <div class="pstat-sec"><div class="pstat-sl">Victory Points</div><div class="pstat-rows">${vpRows}</div></div>
+      <div class="pstat-sec"><div class="pstat-sl">Pieces Built</div><div class="pstat-rows">
+        ${pstatRow("Settlements",settle,settle?"":"muted")}
+        ${pstatRow("Cities",city,city?"":"muted")}
+        ${pstatRow("Roads",roads,roads?"":"muted")}
+      </div></div>
+      <div class="pstat-sec"><div class="pstat-sl">Roads &amp; Army</div><div class="pstat-rows">
+        ${pstatRow("Longest road",pl.roadLen,pl.roadLen?"":"muted")}
+        ${pstatRow("Knights played",pl.playedKnights,pl.playedKnights?"":"muted")}
+      </div></div>
+      <div class="pstat-sec"><div class="pstat-sl">Development Cards</div><div class="pstat-rows">
+        ${pstatRow("Bought",pl.devBought,pl.devBought?"":"muted")}
+        ${pstatRow("Played",pl.devPlayed,pl.devPlayed?"":"muted")}
+        ${pstatRow("In hand",held,held?"":"muted")}
+      </div></div>
+      <div class="pstat-sec"><div class="pstat-sl">Resources</div><div class="pstat-rows">
+        ${pstatRow("Cards in hand",inHand,inHand?"":"muted")}
+        ${pstatRow("Collected (lifetime)",pl.lifetimeRes,pl.lifetimeRes?"":"muted")}
+      </div></div>
+      <div class="pstat-sec"><div class="pstat-sl">Robber</div><div class="pstat-rows">
+        ${pstatRow("Robber moves",pl.robberMoves,pl.robberMoves?"":"muted")}
+        ${pstatRow("Cards stolen",pl.cardsStolen,pl.cardsStolen?"":"muted")}
+        ${pstatRow("Stolen from",pl.cardsStolenFrom,pl.cardsStolenFrom?"":"muted")}
+      </div></div>
+      <div class="pstat-sec"><div class="pstat-sl">Trading</div><div class="pstat-rows">
+        ${pstatRow("Bank trades",pl.tradesBank,pl.tradesBank?"":"muted")}
+        ${pstatRow("Harbour trades",pl.tradesHarbour,pl.tradesHarbour?"":"muted")}
+        ${pstatRow("Player trades",pl.tradesPlayer,pl.tradesPlayer?"":"muted")}
+        ${pstatRow("Discarded on 7s",pl.discardsLost,pl.discardsLost?"":"muted")}
+      </div></div>
+      <div class="pstat-sec"><div class="pstat-sl">Luck — Actual vs Expected</div><div class="pstat-rows">
+        ${pstatRow("Actual (rolls)",actual,actual?"":"muted")}
+        ${pstatRow("Expected",exp.toFixed(1),exp?"":"muted")}
+        ${pstatRow(diff>=0?"Luck (ahead)":"Luck (behind)",sign+Math.abs(diff).toFixed(1),diffCls)}
+      </div></div>
+    </div>`;
+  }).join("");
+  return `<div class="stats-block">
+      <div class="stats-h">Players</div>
+      <div class="stats-sub">${final?"Final per-player breakdown — Victory Point cards now revealed.":"Live per-player breakdown. Hidden Victory Point cards are not shown here."}</div>
+      <div class="pstat-grid">${cards}</div>
+    </div>`;
+}
+function renderAll(){
+  renderPieces(); renderInteract();
+  renderDice(); renderBank(); renderPlayers(); renderPrompt(); renderActions(); renderLog();
+  renderAutoBar(); renderReplayBar(); renderStats(); scheduleBot();
+}
+
+/* ================= REPLAY / DVR =================
+   A snapshot is a DEEP COPY of the whole mutable game state (S) plus the matching
+   log message, recorded after every state-changing play. Viewing the past renders
+   from a throwaway copy, so reviewing old states never mutates the live game and
+   later plays never alter stored snapshots. */
+const REPLAY={ snaps:[], idx:-1, viewing:false, playing:false, timer:null, speed:1000 };
+function deepState(){ return JSON.parse(JSON.stringify(S)); }      // S is plain data — fully JSON-safe
+function recordSnapshot(label){
+  if(!S || REPLAY.viewing) return;                 // never record while reviewing the past
+  const lab=(label!=null)?label:(S.log.length?S.log[S.log.length-1].msg:"");
+  REPLAY.snaps.push({ state:deepState(), label:lab });
+  REPLAY.idx=REPLAY.snaps.length-1;                // the live position tracks the newest play
+}
+function resetReplay(){ stopReplayPlaying(); REPLAY.snaps=[]; REPLAY.idx=-1; REPLAY.viewing=false; }
+function replayAvailable(){ return !!S && REPLAY.snaps.length>0 && (!watchMode||paused); }
+function replayCurrentIndex(){ return REPLAY.viewing?REPLAY.idx:REPLAY.snaps.length-1; }
+function enterReplay(i){
+  if(!replayAvailable()) return;
+  const last=REPLAY.snaps.length-1;
+  i=Math.max(0,Math.min(last,i));
+  if(i>=last){ returnToPresent(); return; }        // the newest snapshot == the live game
+  REPLAY.viewing=true; REPLAY.idx=i;
+  clearTimeout(botTimer);                           // freeze live auto-play while reviewing
+  renderReplayView();
+}
+function returnToPresent(){
+  stopReplayPlaying();
+  REPLAY.viewing=false; REPLAY.idx=REPLAY.snaps.length-1;
+  renderAll();                                      // live render re-enables controls & bots
+}
+function stopReplayPlaying(){ REPLAY.playing=false; clearTimeout(REPLAY.timer); }
+// Render a chosen snapshot read-only: swap S to a throwaway copy, draw, then restore.
+function renderReplayView(){
+  const snap=REPLAY.snaps[REPLAY.idx];
+  if(!snap){ returnToPresent(); return; }
+  const liveS=S;
+  S=JSON.parse(JSON.stringify(snap.state));         // a fresh copy so rendering can't touch the stored snap
+  try{
+    renderPieces();
+    layers.interact.innerHTML="";                   // no clickable candidates while reviewing the past
+    renderDice(); renderBank(); renderPlayers(); renderPrompt(); renderLog();
+    renderReplayActions();
+  } finally { S=liveS; }
+  renderReplayBar();
+}
+function renderReplayActions(){
+  const box=$("actions"); box.innerHTML="";   // stay empty while reviewing the past
+}
+function renderReplayBar(){
+  const sec=$("replaySection"); if(!sec||!S) return;
+  const n=REPLAY.snaps.length, avail=replayAvailable(), cur=replayCurrentIndex();
+  const wrap=sec.querySelector(".replay"); if(wrap) wrap.classList.toggle("disabled",!avail);
+  const sl=$("replaySlider");
+  sl.max=Math.max(0,n-1); sl.value=Math.max(0,cur); sl.disabled=!avail||n<=1;
+  $("replayPrev").disabled =!avail||cur<=0;
+  $("replayNext").disabled =!avail||cur>=n-1;
+  $("replayLive").disabled =!avail||!REPLAY.viewing;
+  if(n===0){ $("replayCount").textContent="—"; $("replayLabel").textContent=""; }
+  else if(REPLAY.viewing){
+    $("replayCount").textContent="Play "+(cur+1)+" of "+n;
+    $("replayLabel").textContent=REPLAY.snaps[cur].label||"";
+  } else {
+    $("replayCount").textContent="Live · "+n+" play"+(n===1?"":"s");
+    $("replayLabel").textContent=avail?("Latest: "+(REPLAY.snaps[n-1].label||"")):"Pause or switch to Manual to rewind.";
+  }
+}
+
+/* ================= TRADING ================= */
+let TRADE=null;
+const zeroRes=()=>({wood:0,brick:0,sheep:0,wheat:0,ore:0});
+
+function openTrade(){
+  if(S.phase!=="play"||!S.hasRolled||S.pendingRobber) return;
+  S.mode=null;                       // clear any pending build placement
+  TRADE={screen:"menu"};
+  $("tradeOverlay").classList.remove("hidden");
+  renderTrade(); renderAll();
+}
+function closeTrade(){ TRADE=null; $("tradeOverlay").classList.add("hidden"); checkWin(); renderAll(); }
+
+function tradeGoto(screen){
+  if(screen==="bank"||screen==="harbour") TRADE={screen, give:null, receive:null};
+  else if(screen==="player") TRADE={screen, stage:"build", partner:null, give:zeroRes(), receive:zeroRes()};
+  else TRADE={screen:"menu"};
+  renderTrade();
+}
+function renderTrade(){
+  if(!TRADE) return;
+  const m=$("tradeModal");
+  if(TRADE.screen==="menu") m.innerHTML=tradeMenuHTML();
+  else if(TRADE.screen==="bank") m.innerHTML=maritimeHTML(false);
+  else if(TRADE.screen==="harbour") m.innerHTML=maritimeHTML(true);
+  else if(TRADE.screen==="player") m.innerHTML=playerTradeHTML();
+}
+
+function tradeMenuHTML(){
+  const p=S.cur, hasH=playerHarbours(p).length>0;
+  return `
+    <div class="trade-head"><h2>Trade</h2><span class="trade-who">${PLAYER_NAMES[p]}'s turn</span></div>
+    <p class="trade-intro">Trade away resources to get what you need. Available only on your turn, after rolling.</p>
+    <div class="trade-menu">
+      <button class="trade-opt" onclick="tradeGoto('bank')">
+        <span class="to-title">Bank · 4:1</span><span class="to-sub">Give 4 of one resource for 1 of any.</span></button>
+      <button class="trade-opt" ${hasH?"":"disabled"} onclick="tradeGoto('harbour')">
+        <span class="to-title">Harbour · 3:1 / 2:1</span>
+        <span class="to-sub">${hasH?"Use the better rates from your ports.":"You have no harbour access yet."}</span></button>
+      <button class="trade-opt" onclick="tradeGoto('player')">
+        <span class="to-title">Player</span><span class="to-sub">Offer a swap to an opponent.</span></button>
+    </div>
+    <div class="trade-foot"><button class="btn cancel" onclick="closeTrade()">Close</button></div>`;
+}
+
+function resCellHTML(r,selected,disabled,sub,handler){
+  const dark=(r==="sheep"||r==="wheat");
+  return `<button class="res-cell${selected?" sel":""}" ${disabled?"disabled":""}
+    style="--rc:${TILE_COLORS[r]};${dark?"color:#2c2117;":"color:#fff;"}" onclick="${handler}">
+    <span class="rc-name">${RES_SHORT[r]}</span>${sub?`<span class="rc-sub">${sub}</span>`:""}</button>`;
+}
+function tradePickGive(r){ TRADE.give=r; if(TRADE.receive===r) TRADE.receive=null; renderTrade(); }
+function tradePickReceive(r){ if(TRADE.give===r) return; TRADE.receive=r; renderTrade(); }
+
+function maritimeHTML(harbour){
+  const p=S.cur;
+  const giveRow=RES_ORDER.map(r=>{
+    const rate=harbour?harbourRate(p,r):4;
+    return resCellHTML(r,TRADE.give===r,S.players[p].resources[r]<rate,
+      "have "+S.players[p].resources[r]+" · "+rate+":1",`tradePickGive('${r}')`);
+  }).join("");
+  const recvRow=RES_ORDER.map(r=>
+    resCellHTML(r,TRADE.receive===r,TRADE.give===r||S.bank[r]<1,
+      S.bank[r]<1?"bank out":"",`tradePickReceive('${r}')`)).join("");
+  const rate=TRADE.give?(harbour?harbourRate(p,TRADE.give):4):null;
+  const ready=TRADE.give&&TRADE.receive&&TRADE.give!==TRADE.receive&&S.players[p].resources[TRADE.give]>=rate&&S.bank[TRADE.receive]>=1;
+  let summary="Pick a resource to give, then one to receive.";
+  if(TRADE.give&&TRADE.receive&&TRADE.give!==TRADE.receive)
+    summary=`Give <strong>${rate} ${RES_SHORT[TRADE.give]}</strong> → receive <strong>1 ${RES_SHORT[TRADE.receive]}</strong>.`;
+  let ports="";
+  if(harbour){
+    const counts={}; playerHarbours(p).forEach(h=>{const k=harbourLabel(h.type);counts[k]=(counts[k]||0)+1;});
+    ports=`<div class="trade-ports">⚓ Your harbours: ${Object.keys(counts).map(k=>k+(counts[k]>1?" ×"+counts[k]:"")).join(" · ")}</div>`;
+  }
+  return `
+    <div class="trade-head"><h2>${harbour?"Harbour trade":"Bank trade"}</h2><span class="trade-who">${PLAYER_NAMES[p]}</span></div>
+    ${ports}
+    <div class="trade-block"><div class="tb-lab">You give</div><div class="res-grid">${giveRow}</div></div>
+    <div class="trade-block"><div class="tb-lab">You receive (1)</div><div class="res-grid">${recvRow}</div></div>
+    <div class="trade-summary">${summary}</div>
+    <div class="trade-foot">
+      <button class="btn cancel" onclick="tradeGoto('menu')">Back</button>
+      <button class="btn primary" ${ready?"":"disabled"} onclick="doMaritimeTrade(${harbour})">Confirm trade</button>
+    </div>`;
+}
+function doMaritimeTrade(harbour){
+  const p=S.cur, g=TRADE.give, rc=TRADE.receive;
+  if(!g||!rc||g===rc) return;
+  const rate=harbour?harbourRate(p,g):4;
+  if(S.players[p].resources[g]<rate) return;
+  if(S.bank[rc]<1){ flash("The bank is out of "+RES_SHORT[rc].toLowerCase()+" — pick another resource."); return; }
+  S.players[p].resources[g]-=rate; S.bank[g]+=rate;
+  S.players[p].resources[rc]+=1; S.bank[rc]-=1;
+  S.players[p].lifetimeRes+=1;
+  if(harbour) S.players[p].tradesHarbour++; else S.players[p].tradesBank++;
+  pushLog(PLAYER_NAMES[p]+" trades "+rate+" "+RES_SHORT[g].toLowerCase()+" for 1 "+RES_SHORT[rc].toLowerCase()+
+    (harbour?" at a harbour ("+rate+":1).":" with the bank (4:1)."),true);
+  SFX.play("trade");
+  recordSnapshot();
+  closeTrade();
+}
+
+function playerTradeHTML(){
+  const p=S.cur;
+  if(TRADE.stage==="respond") return playerRespondHTML();
+  const partners=S.players.filter(pl=>pl.i!==p).map(pl=>
+    `<button class="partner${TRADE.partner===pl.i?" sel":""}" onclick="tradePickPartner(${pl.i})">
+      <span class="pswatch" style="background:${PLAYER_COLORS[pl.i]}"></span><span>${PLAYER_NAMES[pl.i]}</span>
+      <span class="pcards">${totalCards(pl.i)} cards</span></button>`).join("");
+  const giveSteppers=stepperRowHTML("give",p);
+  const recvSteppers=TRADE.partner==null
+    ? `<div class="stepper-hint">Choose an opponent first.</div>` : stepperRowHTML("receive",TRADE.partner);
+  const gSum=RES_ORDER.reduce((s,r)=>s+TRADE.give[r],0);
+  const rSum=RES_ORDER.reduce((s,r)=>s+TRADE.receive[r],0);
+  const ready=TRADE.partner!=null&&gSum>0&&rSum>0;
+  return `
+    <div class="trade-head"><h2>Player trade</h2><span class="trade-who">${PLAYER_NAMES[p]} offers</span></div>
+    <div class="trade-block"><div class="tb-lab">Trade with</div><div class="partners">${partners}</div></div>
+    <div class="trade-block"><div class="tb-lab">You give</div>${giveSteppers}</div>
+    <div class="trade-block"><div class="tb-lab">You ask for</div>${recvSteppers}</div>
+    <div class="trade-foot">
+      <button class="btn cancel" onclick="tradeGoto('menu')">Back</button>
+      <button class="btn primary" ${ready?"":"disabled"} onclick="tradeSendOffer()">Send offer →</button>
+    </div>`;
+}
+function stepperRowHTML(side,owner){
+  const obj=TRADE[side];
+  return `<div class="steppers">`+RES_ORDER.map(r=>{
+    const val=obj[r], max=S.players[owner].resources[r], dark=(r==="sheep"||r==="wheat");
+    return `<div class="stepper">
+      <div class="st-swatch" style="background:${TILE_COLORS[r]};${dark?"color:#2c2117":"color:#fff"}">${RES_SHORT[r]}</div>
+      <div class="st-ctl">
+        <button ${val<=0?"disabled":""} onclick="tradeAdjust('${side}','${r}',-1)">−</button>
+        <span class="st-val">${val}</span>
+        <button ${val>=max?"disabled":""} onclick="tradeAdjust('${side}','${r}',1)">+</button>
+      </div><div class="st-max">/ ${max}</div></div>`;
+  }).join("")+`</div>`;
+}
+function tradeAdjust(side,r,delta){
+  const owner=(side==="give")?S.cur:TRADE.partner;
+  if(owner==null) return;
+  const max=S.players[owner].resources[r];
+  TRADE[side][r]=Math.max(0,Math.min(max,TRADE[side][r]+delta));
+  renderTrade();
+}
+function tradePickPartner(i){
+  TRADE.partner=i;
+  RES_ORDER.forEach(r=>{ TRADE.receive[r]=Math.min(TRADE.receive[r],S.players[i].resources[r]); });
+  renderTrade();
+}
+function tradeSendOffer(){
+  const gSum=RES_ORDER.reduce((s,r)=>s+TRADE.give[r],0);
+  const rSum=RES_ORDER.reduce((s,r)=>s+TRADE.receive[r],0);
+  if(TRADE.partner==null||gSum===0||rSum===0) return;
+  TRADE.stage="respond"; renderTrade();
+}
+function tradeBackToBuild(){ TRADE.stage="build"; renderTrade(); }
+function resList(obj){ const a=RES_ORDER.filter(r=>obj[r]>0).map(r=>obj[r]+" "+RES_SHORT[r]); return a.length?a.join(", "):"nothing"; }
+function playerRespondHTML(){
+  const p=S.cur, q=TRADE.partner;
+  return `
+    <div class="trade-head"><h2>Offer to ${PLAYER_NAMES[q]}</h2></div>
+    <p class="trade-intro">Pass the device to <strong>${PLAYER_NAMES[q]}</strong> to respond.</p>
+    <div class="offer-card">
+      <div class="offer-row"><span class="offer-side" style="color:${PLAYER_COLORS[p]}">${PLAYER_NAMES[p]} gives</span><span>${resList(TRADE.give)}</span></div>
+      <div class="offer-arrow">⇅</div>
+      <div class="offer-row"><span class="offer-side" style="color:${PLAYER_COLORS[q]}">${PLAYER_NAMES[q]} gives</span><span>${resList(TRADE.receive)}</span></div>
+    </div>
+    <div class="trade-foot">
+      <button class="btn cancel" onclick="tradeBackToBuild()">Edit</button>
+      <button class="btn" style="border-color:#9c3b30;color:#9c3b30;background:transparent" onclick="tradeRespond(false)">Decline</button>
+      <button class="btn primary" onclick="tradeRespond(true)">Accept</button>
+    </div>`;
+}
+function tradeRespond(accept){
+  const p=S.cur, q=TRADE.partner;
+  if(!accept){ pushLog(PLAYER_NAMES[q]+" declines "+PLAYER_NAMES[p]+"'s offer."); closeTrade(); return; }
+  const giveOk=RES_ORDER.every(r=>S.players[p].resources[r]>=TRADE.give[r]);
+  const recvOk=RES_ORDER.every(r=>S.players[q].resources[r]>=TRADE.receive[r]);
+  if(!giveOk||!recvOk){ pushLog("Trade failed — the resources are no longer available.",true); closeTrade(); return; }
+  RES_ORDER.forEach(r=>{
+    S.players[p].resources[r]-=TRADE.give[r]; S.players[q].resources[r]+=TRADE.give[r];
+    S.players[q].resources[r]-=TRADE.receive[r]; S.players[p].resources[r]+=TRADE.receive[r];
+  });
+  // both sides gain the cards they received; both record a player-to-player trade
+  S.players[p].lifetimeRes+=RES_ORDER.reduce((s,r)=>s+TRADE.receive[r],0);
+  S.players[q].lifetimeRes+=RES_ORDER.reduce((s,r)=>s+TRADE.give[r],0);
+  S.players[p].tradesPlayer++; S.players[q].tradesPlayer++;
+  pushLog(PLAYER_NAMES[p]+" and "+PLAYER_NAMES[q]+" trade — "+PLAYER_NAMES[p]+" gives "+resList(TRADE.give)+", gets "+resList(TRADE.receive)+".",true);
+  SFX.play("trade");
+  recordSnapshot();
+  closeTrade();
+}
+
+/* ================= ROBBER: DISCARD & STEAL DIALOGS ================= */
+let DISCARD=null;
+function openDiscard(){
+  const p=S.discardQueue[S.discardIdx];
+  DISCARD={player:p, need:Math.floor(totalCards(p)/2), sel:zeroRes()};
+  $("discardOverlay").classList.remove("hidden");
+  renderDiscard();
+}
+function renderDiscard(){ if(DISCARD) $("discardModal").innerHTML=discardHTML(); }
+function discardHTML(){
+  const p=DISCARD.player;
+  const selSum=RES_ORDER.reduce((s,r)=>s+DISCARD.sel[r],0);
+  const atTotal=selSum>=DISCARD.need;
+  const steppers=`<div class="steppers">`+RES_ORDER.map(r=>{
+    const val=DISCARD.sel[r], max=S.players[p].resources[r], dark=(r==="sheep"||r==="wheat");
+    return `<div class="stepper">
+      <div class="st-swatch" style="background:${TILE_COLORS[r]};${dark?"color:#2c2117":"color:#fff"}">${RES_SHORT[r]}</div>
+      <div class="st-ctl">
+        <button ${val<=0?"disabled":""} onclick="discardAdjust('${r}',-1)">−</button>
+        <span class="st-val">${val}</span>
+        <button ${(val>=max||atTotal)?"disabled":""} onclick="discardAdjust('${r}',1)">+</button>
+      </div><div class="st-max">/ ${max}</div></div>`;
+  }).join("")+`</div>`;
+  const ready=selSum===DISCARD.need;
+  return `
+    <div class="trade-head"><h2>Discard cards</h2><span class="trade-who">${PLAYER_NAMES[p]}</span></div>
+    <p class="trade-intro">A 7 was rolled. <strong>${PLAYER_NAMES[p]}</strong> holds ${totalCards(p)} cards and must discard
+      <strong>${DISCARD.need}</strong> back to the bank. Chosen ${selSum} / ${DISCARD.need}.</p>
+    <div class="trade-block"><div class="tb-lab">Choose cards to discard</div>${steppers}</div>
+    <div class="trade-foot">
+      <button class="btn primary" ${ready?"":"disabled"} onclick="confirmDiscard()">Discard ${DISCARD.need}</button>
+    </div>`;
+}
+function discardAdjust(r,delta){
+  const p=DISCARD.player, max=S.players[p].resources[r];
+  const selSum=RES_ORDER.reduce((s,x)=>s+DISCARD.sel[x],0);
+  if(delta>0 && selSum>=DISCARD.need) return;     // can't pick more than required
+  DISCARD.sel[r]=Math.max(0,Math.min(max,DISCARD.sel[r]+delta));
+  renderDiscard();
+}
+function confirmDiscard(){
+  const p=DISCARD.player;
+  const selSum=RES_ORDER.reduce((s,r)=>s+DISCARD.sel[r],0);
+  if(selSum!==DISCARD.need) return;
+  RES_ORDER.forEach(r=>{ S.players[p].resources[r]-=DISCARD.sel[r]; S.bank[r]+=DISCARD.sel[r]; });
+  S.players[p].discardsLost+=DISCARD.need;
+  pushLog(PLAYER_NAMES[p]+" discards "+DISCARD.need+" card"+(DISCARD.need===1?"":"s")+".",true);
+  recordSnapshot();
+  DISCARD=null; S.discardIdx++;
+  advanceDiscards();
+}
+/* Walk the discard queue: bots discard automatically, humans get the dialog.
+   When everyone is done, the robber moves. */
+function advanceDiscards(){
+  while(S.discardQueue && S.discardIdx<S.discardQueue.length){
+    const p=S.discardQueue[S.discardIdx];
+    if(totalCards(p)<=7){ S.discardIdx++; continue; }
+    if(isBot(p)){ botDiscard(p); recordSnapshot(); S.discardIdx++; continue; }
+    openDiscard(); return;                     // human: wait for confirmDiscard()
+  }
+  S.discardQueue=null; S.discardIdx=0;
+  DISCARD=null; $("discardOverlay").classList.add("hidden");
+  S.mode="robber";
+  pushLog(PLAYER_NAMES[S.cur]+" — move the robber.",true);
+  renderAll();
+}
+
+function openSteal(){ $("stealOverlay").classList.remove("hidden"); renderSteal(); }
+function renderSteal(){ if(S.stealChoices) $("stealModal").innerHTML=stealHTML(); }
+function stealHTML(){
+  const opts=S.stealChoices.map(v=>
+    `<button class="partner" onclick="chooseSteal(${v})">
+      <span class="pswatch" style="background:${PLAYER_COLORS[v]}"></span>
+      <span>${PLAYER_NAMES[v]}</span>
+      <span class="pcards">${totalCards(v)} cards</span></button>`).join("");
+  return `
+    <div class="trade-head"><h2>Steal a card</h2><span class="trade-who">${PLAYER_NAMES[S.cur]}</span></div>
+    <p class="trade-intro">Several rivals border that hex. Choose whom to rob — one random card will be taken.</p>
+    <div class="trade-block"><div class="partners">${opts}</div></div>`;
+}
+function chooseSteal(v){ $("stealOverlay").classList.add("hidden"); finishRobber(v); }
+
+/* ================= DEVELOPMENT CARDS ================= */
+function buyDev(){
+  if(!canActNow()) return;
+  const p=S.cur;
+  if(S.deck.length===0){ flash("The development deck is empty."); return; }
+  if(!canAfford(p,COST.dev)){ flash("Not enough resources — a development card costs "+costText(COST.dev)+"."); return; }
+  pay(p,COST.dev);
+  const card=S.deck.shift();                 // drawn from the top, hidden from opponents
+  S.players[p].dev[card]++; S.players[p].devNew[card]++; S.players[p].devBought++;
+  pushLog(PLAYER_NAMES[p]+" buys a development card.",true);
+  SFX.play("dev");
+  recomputeVP(); checkWin(); recordSnapshot(); renderAll();     // a bought VP card can win immediately
+}
+
+let DEV=null;
+function openDevPlay(){ if(!canPlayDevNow()) return; DEV={screen:"list"}; $("devOverlay").classList.remove("hidden"); renderDev(); }
+function closeDev(){ DEV=null; $("devOverlay").classList.add("hidden"); renderAll(); }
+function devGoList(){ DEV={screen:"list"}; renderDev(); }
+function renderDev(){
+  if(!DEV) return; const m=$("devModal");
+  if(DEV.screen==="list") m.innerHTML=devListHTML();
+  else if(DEV.screen==="plenty") m.innerHTML=devPlentyHTML();
+  else if(DEV.screen==="mono") m.innerHTML=devMonoHTML();
+}
+function canPlayRoadBuilding(p){ return ownCount(p,"road")<LIMIT.road && legalRoads(p,false,null).length>0; }
+function devListHTML(){
+  const p=S.cur, d=S.players[p].dev, nw=S.players[p].devNew;
+  const playable=t=>d[t]-nw[t];
+  const defs=[
+    ["knight","Move the robber and steal a card. Counts toward Largest Army.","devPlayKnight()",true],
+    ["road","Place 2 roads for free, following the normal connection rules.","devPlayRoad()",canPlayRoadBuilding(p)],
+    ["plenty","Take any 2 resource cards of your choice from the bank.","devPlayPlentyStart()",true],
+    ["mono","Name one resource; every opponent hands you all they hold.","devPlayMonoStart()",true]
+  ];
+  let rows=defs.filter(([t])=>d[t]>0).map(([t,desc,handler,ok])=>{
+    const total=d[t], pl=playable(t), dis=pl<=0||S.devPlayedThisTurn||!ok;
+    let note="";
+    if(pl<=0) note=" (bought this turn — playable next turn)";
+    else if(!ok) note=" (no legal spot right now)";
+    return `<button class="trade-opt" ${dis?"disabled":""} onclick="${dis?"":handler}">
+      <span class="to-title">${DEV_NAME[t]} ×${total}</span>
+      <span class="to-sub">${desc}${note}</span></button>`;
+  }).join("");
+  if(!rows) rows=`<div class="stepper-hint">No playable development cards${d.vp?" — only Victory Point cards, which already score automatically.":"."}</div>`;
+  const vpLine=d.vp?`<div class="trade-ports">★ Holding ${d.vp} Victory Point card${d.vp>1?"s":""} — each silently adds 1 VP.</div>`:"";
+  const playedNote=S.devPlayedThisTurn?`<div class="trade-ports">You have already played a development card this turn.</div>`:"";
+  return `
+    <div class="trade-head"><h2>Development cards</h2><span class="trade-who">${PLAYER_NAMES[p]}</span></div>
+    <p class="trade-intro">One development card may be played per turn (never one bought this turn).</p>
+    ${vpLine}${playedNote}
+    <div class="trade-menu">${rows}</div>
+    <div class="trade-foot"><button class="btn cancel" onclick="closeDev()">Close</button></div>`;
+}
+function devPlayKnight(){
+  if(S.players[S.cur].dev.knight-S.players[S.cur].devNew.knight<=0||S.devPlayedThisTurn) return;
+  const p=S.cur;
+  S.players[p].dev.knight--; S.players[p].playedKnights++; S.players[p].devPlayed++; S.devPlayedThisTurn=true;
+  DEV=null; $("devOverlay").classList.add("hidden");
+  updateLargestArmy(); recomputeVP(); checkWin();
+  if(S.phase==="over"){ recordSnapshot(); renderAll(); return; }
+  S.mode="robber";                              // robber move with no discard step
+  pushLog(PLAYER_NAMES[p]+" plays a Knight.",true);
+  SFX.play("dev");
+  recordSnapshot();
+  renderAll();
+}
+function devPlayRoad(){
+  const p=S.cur;
+  if(S.players[p].dev.road-S.players[p].devNew.road<=0||S.devPlayedThisTurn||!canPlayRoadBuilding(p)) return;
+  S.players[p].dev.road--; S.players[p].devPlayed++; S.devPlayedThisTurn=true;
+  S.freeRoadsLeft=2; S.mode="roadBuild";
+  DEV=null; $("devOverlay").classList.add("hidden");
+  pushLog(PLAYER_NAMES[p]+" plays Road Building — place 2 free roads.",true);
+  SFX.play("dev");
+  recordSnapshot();
+  renderAll();
+}
+function devPlayPlentyStart(){
+  if(S.players[S.cur].dev.plenty-S.players[S.cur].devNew.plenty<=0||S.devPlayedThisTurn) return;
+  DEV={screen:"plenty",sel:zeroRes()}; renderDev();
+}
+function devPlayMonoStart(){
+  if(S.players[S.cur].dev.mono-S.players[S.cur].devNew.mono<=0||S.devPlayedThisTurn) return;
+  DEV={screen:"mono",pick:null}; renderDev();
+}
+function plentyCap(){ return Math.min(2, RES_ORDER.reduce((s,r)=>s+S.bank[r],0)); }
+function devStepperRow(adjFn){
+  const cap=plentyCap();
+  return `<div class="steppers">`+RES_ORDER.map(r=>{
+    const val=DEV.sel[r], dark=(r==="sheep"||r==="wheat");
+    const sum=RES_ORDER.reduce((s,x)=>s+DEV.sel[x],0);
+    return `<div class="stepper">
+      <div class="st-swatch" style="background:${TILE_COLORS[r]};${dark?"color:#2c2117":"color:#fff"}">${RES_SHORT[r]}</div>
+      <div class="st-ctl">
+        <button ${val<=0?"disabled":""} onclick="${adjFn}('${r}',-1)">−</button>
+        <span class="st-val">${val}</span>
+        <button ${sum>=cap||val>=S.bank[r]?"disabled":""} onclick="${adjFn}('${r}',1)">+</button>
+      </div><div class="st-max">/ ${S.bank[r]}</div></div>`;
+  }).join("")+`</div>`;
+}
+function devPlentyHTML(){
+  const sum=RES_ORDER.reduce((s,r)=>s+DEV.sel[r],0), cap=plentyCap();
+  const note=cap<2?` <em>(only ${cap} left in the bank)</em>`:"";
+  return `
+    <div class="trade-head"><h2>Year of Plenty</h2><span class="trade-who">${PLAYER_NAMES[S.cur]}</span></div>
+    <p class="trade-intro">Take any 2 resource cards the bank still has. Chosen ${sum} / ${cap}.${note}</p>
+    <div class="trade-block">${devStepperRow("devPlentyAdjust")}</div>
+    <div class="trade-foot">
+      <button class="btn cancel" onclick="devGoList()">Back</button>
+      <button class="btn primary" ${sum===cap&&cap>0?"":"disabled"} onclick="confirmPlenty()">Take ${cap||2}</button>
+    </div>`;
+}
+function devPlentyAdjust(r,delta){
+  const sum=RES_ORDER.reduce((s,x)=>s+DEV.sel[x],0);
+  if(delta>0&&(sum>=plentyCap()||DEV.sel[r]>=S.bank[r])) return;
+  DEV.sel[r]=Math.max(0,DEV.sel[r]+delta);
+  renderDev();
+}
+function confirmPlenty(){
+  const p=S.cur, sum=RES_ORDER.reduce((s,r)=>s+DEV.sel[r],0), cap=plentyCap();
+  if(sum!==cap||cap===0) return;
+  if(RES_ORDER.some(r=>DEV.sel[r]>S.bank[r])) return;          // never draw more than the bank holds
+  RES_ORDER.forEach(r=>{S.players[p].resources[r]+=DEV.sel[r]; S.bank[r]-=DEV.sel[r];});
+  S.players[p].lifetimeRes+=sum;
+  S.players[p].dev.plenty--; S.players[p].devPlayed++; S.devPlayedThisTurn=true;
+  pushLog(PLAYER_NAMES[p]+" plays Year of Plenty and takes "+resList(DEV.sel)+".",true);
+  SFX.play("dev");
+  DEV=null; $("devOverlay").classList.add("hidden");
+  recomputeVP(); recordSnapshot(); renderAll();
+}
+function devMonoHTML(){
+  const cells=RES_ORDER.map(r=>resCellHTML(r,DEV.pick===r,false,"",`devMonoPick('${r}')`)).join("");
+  return `
+    <div class="trade-head"><h2>Monopoly</h2><span class="trade-who">${PLAYER_NAMES[S.cur]}</span></div>
+    <p class="trade-intro">Name one resource. Every opponent hands you all the cards of that type they hold.</p>
+    <div class="trade-block"><div class="res-grid">${cells}</div></div>
+    <div class="trade-foot">
+      <button class="btn cancel" onclick="devGoList()">Back</button>
+      <button class="btn primary" ${DEV.pick?"":"disabled"} onclick="confirmMono()">Take all</button>
+    </div>`;
+}
+function devMonoPick(r){ DEV.pick=r; renderDev(); }
+function confirmMono(){
+  const p=S.cur, r=DEV.pick;
+  if(!r) return;
+  let total=0;
+  for(let i=0;i<S.nPlayers;i++){ if(i===p) continue; total+=S.players[i].resources[r]; S.players[i].resources[r]=0; }
+  S.players[p].resources[r]+=total;
+  S.players[p].lifetimeRes+=total;
+  S.players[p].dev.mono--; S.players[p].devPlayed++; S.devPlayedThisTurn=true;
+  pushLog(PLAYER_NAMES[p]+" plays Monopoly on "+RES_SHORT[r].toLowerCase()+" — collects "+total+" card"+(total===1?"":"s")+".",true);
+  SFX.play("dev");
+  DEV=null; $("devOverlay").classList.add("hidden");
+  recomputeVP(); recordSnapshot(); renderAll();
+}
+
+/* ================= COMPUTER PLAYERS (BOTS) ================= */
+let PLAYER_TYPES=[];          // per-seat "human" | "bot"
+let watchMode=false;          // global Auto / watch — every seat is bot-controlled
+let watchPendingOff=false;    // user asked to return to Manual at the next turn boundary
+let paused=false;             // freeze auto-play
+let speedMs=550;              // delay between bot actions
+let botTimer=null;
+
+const ROAD_TARGET_MIN=6;      // only build roads toward genuinely good future settlement spots
+const STALL_LIMIT=50;         // turns of zero VP progress before a stalemate is called (auto-play safety)
+const SETTLE_MIN=0;           // don't take 1-hex / 2-&-12 corners except in the opening
+const TRADE_GAP_MAX=2;        // only bank/harbour-trade to finish a build we're this close to
+
+function isBot(p){ return watchMode || PLAYER_TYPES[p]==="bot"; }
+function anyBots(){ return watchMode || PLAYER_TYPES.some(t=>t==="bot"); }
+function applyPendingMode(){          // called at each turn boundary
+  if(watchPendingOff){ watchPendingOff=false; if(watchMode){ watchMode=false; pushLog("Manual control resumed.",true); } }
+}
+function setWatch(on){
+  if(on){
+    watchMode=true; watchPendingOff=false; paused=false;
+    if(REPLAY.viewing){ REPLAY.viewing=false; stopReplayPlaying(); }   // live watch leaves the scrubber
+    if(S && (S.mode==="settlement"||S.mode==="road"||S.mode==="city")) S.mode=null;   // drop a dangling human placement
+    pushLog("Auto-play on — watching the bots.",true);
+  } else if(watchMode){
+    watchPendingOff=true;             // hand back to humans at the next turn
+  }
+  renderAll();
+}
+function togglePause(){
+  paused=!paused;
+  if(!paused && watchMode && REPLAY.viewing){ REPLAY.viewing=false; stopReplayPlaying(); }  // resuming live watch ends review
+  renderAll();
+}
+function renderAutoBar(){
+  if(!S) return;
+  $("modeAuto").classList.toggle("sel",watchMode);
+  $("modeManual").classList.toggle("sel",!watchMode);
+  $("pauseBtn").textContent=paused?"Resume":"Pause";
+  $("pauseBtn").classList.toggle("sel",paused);
+  document.querySelectorAll(".spd").forEach(b=>b.classList.toggle("sel",+b.dataset.ms===speedMs));
+  const manual=!watchMode;                              // Pause + Speed are inert while playing by hand
+  const bar=document.querySelector(".autobar");
+  if(bar) bar.classList.toggle("manual",manual);       // grey out Pause + Speed in Manual mode
+  $("pauseBtn").disabled=manual;
+  document.querySelectorAll(".spd").forEach(b=>b.disabled=manual);
+  $("autoStatus").textContent = watchMode ? "Watching: bots control every seat" : "Manual: all seats are human";
+}
+
+/* ---- scheduler: one visible bot action per tick; always terminates ---- */
+function botActive(){
+  if(!S || S.phase==="over" || paused || REPLAY.viewing) return false;
+  if(DISCARD||TRADE||DEV||S.stealChoices) return false;   // a human dialog is resolving
+  if(S.phase==="setup"||S.phase==="play") return isBot(S.cur);
+  return false;
+}
+function scheduleBot(){
+  clearTimeout(botTimer);
+  if(botActive()) botTimer=setTimeout(runBotTick, speedMs);
+}
+function runBotTick(){
+  if(!botActive()) return;
+  try{ botTickOnce(); }
+  catch(err){
+    console.error("Bot error — ending the turn safely.",err);
+    if(S){ S.mode=null; S.pendingRobber=false; S.stealChoices=null; S.discardQueue=null;
+      if(S.phase==="play"){ try{ endTurn(); }catch(e){ S.cur=(S.cur+1)%S.nPlayers; S.hasRolled=false; S.devPlayedThisTurn=false; renderAll(); } } }
+  }
+  scheduleBot();
+}
+function botTickOnce(){
+  if(S.phase==="setup"){ botSetup(); return; }
+  if(S.phase!=="play") return;
+  if(S.mode==="robber"){ botMoveRobber(); return; }
+  if(S.mode==="roadBuild"){ botPlaceFreeRoad(); return; }
+  if(S.pendingRobber) return;                  // waiting on a human discard
+  if(!S.hasRolled){
+    if(!S.devPlayedThisTurn && botMaybePlayDevPreRoll()) return;   // a dev card may be played before the roll too
+    rollDice(); return;
+  }
+  if(botDoOneBuildOrPlay()) return;
+  endTurn();                                   // nothing useful left — always end
+}
+
+/* ---- placement scoring (used everywhere a bot picks a spot) ---- */
+function pips(n){ return (n==null)?0:6-Math.abs(7-n); }
+/* Sum of pips for every number a player's settlements/cities sit on (city counts double).
+   Divided by 36 this is their expected resource yield per roll. */
+function expectedPips(p){
+  let sum=0;
+  for(const vid in S.buildings){ const b=S.buildings[vid]; if(b.player!==p) continue;
+    const mult=(b.type==="city")?2:1;
+    vertices[vid].hexes.forEach(hi=>{ sum+=pips(hexes[hi].number)*mult; });
+  }
+  return sum;
+}
+function harbourAt(vid){ return harbours.find(h=>h.v1===vid||h.v2===vid)||null; }
+function playerCoverage(p){
+  const res=new Set(), nums=new Set();
+  for(const vid in S.buildings){ const b=S.buildings[vid]; if(b.player!==p) continue;
+    vertices[vid].hexes.forEach(hi=>{const h=hexes[hi]; if(h.resource!=="desert"&&h.number!=null){res.add(h.resource);nums.add(h.number);}}); }
+  return {res,nums};
+}
+function spotScore(vid,p){
+  const prod=vertices[vid].hexes.map(hi=>hexes[hi]).filter(h=>h.resource!=="desert"&&h.number!=null);
+  const k=prod.length;
+  if(k===0) return -100;                                   // pure coast / desert corner
+  let score=prod.reduce((s,h)=>s+pips(h.number),0);        // base = sum of pips
+  if(k>=3) score+=6; else if(k===2) score-=4; else score-=10;          // strongly favour 3-hex spots
+  if(prod.every(h=>h.number===2||h.number===12)) score-=50;            // 2/12-only ≈ worthless
+  prod.forEach(h=>{ if(h.number===6||h.number===8) score+=2; });       // bonus for the best numbers
+  const cov=playerCoverage(p);
+  prod.forEach(h=>{ if(!cov.res.has(h.resource)) score+=2; if(!cov.nums.has(h.number)) score+=1; });  // diversity
+  const hb=harbourAt(vid);
+  if(hb){ if(hb.type==="3:1") score+=1;
+    else score+=(prod.some(h=>h.resource===hb.type)||cov.res.has(hb.type))?3:1; }                     // 2:1 you can feed
+  return score;
+}
+function argmaxVid(list,fn){ let best=null,bv=-1e9; list.forEach(v=>{const s=fn(v); if(s>bv){bv=s;best=v;}}); return best; }
+function botMySettlements(p){ return Object.keys(S.buildings).filter(v=>S.buildings[v].player===p&&S.buildings[v].type==="settlement").map(Number); }
+function botBestSpot(list,p){ return argmaxVid(list,v=>spotScore(v,p)); }
+
+/* ---- opening placement ---- */
+function botSetup(){
+  const p=S.cur;
+  if(S.mode==="setupSettlement"){
+    const cands=legalSettlements(p,true);
+    const vid=argmaxVid(cands,v=>spotScore(v,p));
+    commitSettlement(vid==null?cands[0]:vid);
+  } else if(S.mode==="setupRoad"){
+    commitRoad(botPickSetupRoad(p,S.lastSetupV));
+  }
+}
+function botPickSetupRoad(p,anchor){
+  const legal=legalRoads(p,true,anchor);
+  if(legal.length===0) return null;
+  // Aim the road toward the best open spot we could actually settle later (seed only
+  // from this settlement so the first road touches it, as setup requires).
+  let r=pickRoadTarget(p,[anchor],3,ROAD_TARGET_MIN,2);
+  if(!r) r=pickRoadTarget(p,[anchor],4,0,2);        // relax the score bar before giving up
+  if(r){ const e=edges[r.edge]; if((e.v1===anchor||e.v2===anchor) && legal.includes(r.edge)) return r.edge; }
+  // Last resort (everything beyond is blocked): face productive land, and never a dead end.
+  let best=legal[0],bv=-1e9;
+  legal.forEach(eid=>{
+    const e=edges[eid], far=(e.v1===anchor)?e.v2:e.v1;
+    const prodVal=vertices[far].hexes.map(hi=>hexes[hi]).filter(h=>h.resource!=="desert"&&h.number!=null)
+      .reduce((s,h)=>s+pips(h.number),0);
+    const openOnward=vertices[far].adj.some(nb=>nb!==anchor && !S.buildings[nb] &&
+      vertices[nb].edges.some(o=>o!==eid && S.roads[o]===undefined)) ? 2 : -8;   // penalise dead ends
+    const s=prodVal+openOnward;
+    if(s>bv){bv=s;best=eid;}
+  });
+  return best;
+}
+
+/* ---- robber / steal / discard ---- */
+function leaderOf(exclude){
+  let best=-1,bv=-1;
+  S.players.forEach(pl=>{ if(pl.i===exclude) return; const v=pl.vp*100+totalCards(pl.i); if(v>bv){bv=v;best=pl.i;} });
+  return best;
+}
+function botPickStealTarget(victims){
+  const leader=leaderOf(S.cur);
+  let best=victims[0],bv=-1;
+  victims.forEach(v=>{ const s=totalCards(v)+(v===leader?100:0); if(s>bv){bv=s;best=v;} });
+  return best;
+}
+function botRobberHasTarget(p){
+  return hexes.some((h,hi)=> hi!==S.robberHex
+    && !h.corners.some(v=>S.buildings[v]&&S.buildings[v].player===p)
+    && h.corners.some(v=>S.buildings[v]&&S.buildings[v].player!==p));
+}
+function botMoveRobber(){
+  const me=S.cur, leader=leaderOf(me);
+  const touchesSelf=hi=>hexes[hi].corners.some(v=>S.buildings[v]&&S.buildings[v].player===me);
+  let best=null,bestScore=-1;
+  hexes.forEach((h,hi)=>{
+    if(hi===S.robberHex||touchesSelf(hi)) return;
+    let sc=0, opp=false;
+    h.corners.forEach(v=>{const b=S.buildings[v]; if(b&&b.player!==me){ opp=true; sc+=(b.type==="city"?2:1)*pips(h.number); if(b.player===leader) sc+=10; }});
+    if(!opp) return;
+    if(sc>bestScore){bestScore=sc;best=hi;}
+  });
+  if(best==null){                                  // fallback: any hex not on our own land
+    for(let hi=0;hi<hexes.length;hi++){ if(hi!==S.robberHex&&!touchesSelf(hi)){ best=hi; break; } }
+    if(best==null) best=(S.robberHex+1)%hexes.length;
+  }
+  commitRobber(best);
+}
+function botDiscard(p){
+  const need=Math.floor(totalCards(p)/2);
+  const keepW={wheat:3,ore:3,brick:2,wood:2,sheep:1};   // hang on to city/build resources, dump sheep first
+  for(let i=0;i<need;i++){
+    let pick=null,best=-1e9;
+    RES_ORDER.forEach(r=>{ if(S.players[p].resources[r]>0){ const v=S.players[p].resources[r]*2-keepW[r]; if(v>best){best=v;pick=r;} }});
+    if(pick){ S.players[p].resources[pick]--; S.bank[pick]++; }
+  }
+  S.players[p].discardsLost+=need;
+  pushLog(PLAYER_NAMES[p]+" discards "+need+" card"+(need===1?"":"s")+".",true);
+}
+
+/* ---- build / trade / dev priority ---- */
+function botDoOneBuildOrPlay(){
+  const p=S.cur;
+  if(!S.devPlayedThisTurn && botMaybePlayDev()) return true;
+  // 1. claim a new settlement on the best legal spot (board space is contested — grab it first)
+  if(ownCount(p,"settlement")<LIMIT.settlement){
+    const spots=legalSettlements(p,false).filter(v=>spotScore(v,p)>=SETTLE_MIN);
+    if(spots.length){
+      if(canAfford(p,COST.settlement)){ commitSettlement(botBestSpot(spots,p)); return true; }
+      if(botTradeFor(COST.settlement)) return true;
+    }
+  }
+  // 2. upgrade the best settlement to a city
+  if(ownCount(p,"city")<LIMIT.city){
+    const setts=botMySettlements(p);
+    if(setts.length){
+      if(canAfford(p,COST.city)){ commitCity(botBestSpot(setts,p)); return true; }
+      if(botTradeFor(COST.city)) return true;
+    }
+  }
+  // 3. build a road toward the best reachable open spot
+  if(ownCount(p,"road")<LIMIT.road){
+    const eid=botBestRoad(p);
+    if(eid!=null){
+      if(canAfford(p,COST.road)){ commitRoad(eid); return true; }
+      if(botTradeFor(COST.road)) return true;
+    }
+  }
+  // 4. spend the spare on a development card
+  if(S.deck.length>0 && canAfford(p,COST.dev)){ buyDev(); return true; }
+  return false;
+}
+/* Shortest road distances (in new roads) from a set of seed vertices, traversing
+   only still-empty edges and never extending through an opponent's building. */
+function roadReachFrom(p,seeds){
+  const dist=new Array(vertices.length).fill(Infinity);
+  const firstEdge=new Array(vertices.length).fill(-1);
+  const q=[];
+  seeds.forEach(v=>{ if(dist[v]===Infinity){ dist[v]=0; q.push(v); } });
+  for(let head=0;head<q.length;head++){
+    const v=q[head], b=S.buildings[v];
+    if(b&&b.player!==p) continue;                  // can't extend through an opponent's building
+    vertices[v].edges.forEach(eid=>{
+      if(S.roads[eid]!==undefined) return;         // edge already has a road
+      const e=edges[eid], u=(e.v1===v)?e.v2:e.v1;
+      if(dist[u]>dist[v]+1){
+        dist[u]=dist[v]+1;
+        firstEdge[u]=(dist[v]===0)?eid:firstEdge[v];
+        q.push(u);
+      }
+    });
+  }
+  return {dist,firstEdge};
+}
+/* Pick the road that best starts a shortest path to an open vertex where the bot
+   could really build later — empty, distance-rule-legal, decent score, reachable.
+   Returns {edge,target,dist,score} or null when no such spot exists. */
+function pickRoadTarget(p,seeds,maxDist,minScore,distW){
+  const {dist,firstEdge}=roadReachFrom(p,seeds);
+  let bestV=-1,bestVal=-1e9,bestDist=0;
+  vertices.forEach(v=>{
+    const id=v.id;
+    if(dist[id]<1||dist[id]>maxDist||!isFinite(dist[id])) return;
+    if(S.buildings[id]||!v.adj.every(nb=>!S.buildings[nb])) return;   // occupied or blocked by the distance rule
+    const sc=spotScore(id,p);
+    if(sc<minScore) return;
+    const val=sc-dist[id]*(distW||3);
+    if(val>bestVal){ bestVal=val; bestV=id; bestDist=dist[id]; }
+  });
+  if(bestV<0) return null;
+  const fe=firstEdge[bestV];
+  if(fe<0||S.roads[fe]!==undefined) return null;
+  return {edge:fe,target:bestV,dist:bestDist,score:spotScore(bestV,p)};
+}
+function netSeeds(p){
+  const inNet=v=>{ const b=S.buildings[v]; if(b&&b.player===p) return true; return vertices[v].edges.some(e=>S.roads[e]===p); };
+  return vertices.filter(v=>inNet(v.id)).map(v=>v.id);
+}
+function botBestRoad(p){
+  if(ownCount(p,"road")>=LIMIT.road) return null;
+  const r=pickRoadTarget(p,netSeeds(p),4,ROAD_TARGET_MIN,3);
+  return r?r.edge:null;
+}
+function botPlaceFreeRoad(){
+  const p=S.cur;
+  let eid=botBestRoad(p);
+  if(eid==null){ const r=pickRoadTarget(p,netSeeds(p),5,0,2); eid=r?r.edge:null; }  // any reachable buildable spot
+  if(eid==null){ S.mode=null; S.freeRoadsLeft=0; renderAll(); return; }             // nothing worth it — forfeit, never a road to nowhere
+  commitRoad(eid);                                 // handles freeRoadsLeft and exiting the mode
+}
+function botTradeFor(cost){
+  const p=S.cur, need={}; let totalNeed=0;
+  Object.keys(cost).forEach(r=>{ const d=cost[r]-S.players[p].resources[r]; if(d>0){need[r]=d; totalNeed+=d;} });
+  if(totalNeed===0||totalNeed>TRADE_GAP_MAX) return false;
+  let give=null,rate=99;
+  RES_ORDER.forEach(r=>{ if(need[r]) return; const rt=harbourRate(p,r), surplus=S.players[p].resources[r]-(cost[r]||0);
+    if(surplus>=rt && rt<rate){ rate=rt; give=r; } });
+  if(give==null) return false;
+  const recv=Object.keys(need).find(r=>S.bank[r]>=1);   // the bank must actually have what we want
+  if(recv==null) return false;
+  S.players[p].resources[give]-=rate; S.bank[give]+=rate;
+  S.players[p].resources[recv]+=1; S.bank[recv]-=1;
+  S.players[p].lifetimeRes+=1;
+  if(rate<4) S.players[p].tradesHarbour++; else S.players[p].tradesBank++;
+  pushLog(PLAYER_NAMES[p]+" trades "+rate+" "+RES_SHORT[give].toLowerCase()+" for 1 "+RES_SHORT[recv].toLowerCase()+(rate<4?" at a harbour.":" with the bank."),true);
+  SFX.play("trade");
+  recordSnapshot();
+  return true;
+}
+// Pre-roll: only the cases where playing before the roll is clearly better than after.
+function botMaybePlayDevPreRoll(){
+  const p=S.cur, d=S.players[p].dev, nw=S.players[p].devNew;
+  const haveKnight=(d.knight-nw.knight)>0;
+  // Knight before rolling: shove the robber off our own tile so we still collect on this roll.
+  if(haveKnight){
+    const robberOnMe=hexes[S.robberHex].corners.some(v=>S.buildings[v]&&S.buildings[v].player===p);
+    if(robberOnMe){ devPlayKnight(); return true; }
+  }
+  return false;
+}
+function botMaybePlayDev(){
+  const p=S.cur, d=S.players[p].dev, nw=S.players[p].devNew;
+  const have=t=>(d[t]-nw[t])>0;
+  if(have("knight")){
+    const leader=leaderOf(p);
+    const robberOnMe=hexes[S.robberHex].corners.some(v=>S.buildings[v]&&S.buildings[v].player===p);
+    const leaderAhead=leader>=0 && S.players[leader].vp>=S.players[p].vp;
+    const nextK=S.players[p].playedKnights+1;
+    const chaseArmy=nextK>=3 && (S.largestArmy==null || (S.largestArmy!==p && nextK>S.players[S.largestArmy].playedKnights));
+    if(botRobberHasTarget(p) && (robberOnMe||leaderAhead||chaseArmy)){ devPlayKnight(); return true; }
+  }
+  if(have("mono")){
+    const best=botMonopolyBest(p);
+    if(best && best.total>=4){ playBotMonopoly(best.res); return true; }
+  }
+  if(have("plenty")){
+    const pick=botPlentyPick(p);
+    if(pick){ playBotPlenty(pick); return true; }
+  }
+  if(have("road") && ownCount(p,"road")<LIMIT.road && botBestRoad(p)!=null){ devPlayRoad(); return true; }
+  return false;
+}
+function botMonopolyBest(p){
+  let best=null;
+  RES_ORDER.forEach(r=>{ let t=0; for(let i=0;i<S.nPlayers;i++){ if(i!==p) t+=S.players[i].resources[r]; }
+    if(!best||t>best.total) best={res:r,total:t}; });
+  return best;
+}
+function botPlentyPick(p){
+  if(RES_ORDER.reduce((s,r)=>s+S.bank[r],0)===0) return null;     // bank is empty — nothing to take
+  const targets=[];
+  if(ownCount(p,"city")<LIMIT.city && botMySettlements(p).length) targets.push(COST.city);
+  if(ownCount(p,"settlement")<LIMIT.settlement && legalSettlements(p,false).some(v=>spotScore(v,p)>=SETTLE_MIN)) targets.push(COST.settlement);
+  if(ownCount(p,"road")<LIMIT.road && botBestRoad(p)!=null) targets.push(COST.road);
+  for(const cost of targets){
+    const need=[]; Object.keys(cost).forEach(r=>{ let dlt=cost[r]-S.players[p].resources[r]; while(dlt-->0) need.push(r); });
+    if(need.length<1||need.length>2) continue;
+    // the bank must be able to supply the needed multiset
+    const used={}; let ok=true;
+    need.forEach(r=>{ used[r]=(used[r]||0)+1; if(used[r]>S.bank[r]) ok=false; });
+    if(!ok) continue;
+    const picks=need.slice();
+    // pad up to 2 with any resource the bank can still supply
+    while(picks.length<2){
+      const cnt={}; picks.forEach(r=>cnt[r]=(cnt[r]||0)+1);
+      const pad=RES_ORDER.find(r=>(cnt[r]||0)<S.bank[r]);
+      if(pad==null) break;
+      picks.push(pad);
+    }
+    return picks;
+  }
+  return null;
+}
+function playBotPlenty(two){
+  const p=S.cur;
+  two.forEach(r=>{ S.players[p].resources[r]++; S.bank[r]--; S.players[p].lifetimeRes++; });
+  S.players[p].dev.plenty--; S.players[p].devPlayed++; S.devPlayedThisTurn=true;
+  const tally=zeroRes(); two.forEach(r=>tally[r]++);
+  pushLog(PLAYER_NAMES[p]+" plays Year of Plenty and takes "+resList(tally)+".",true);
+  SFX.play("dev");
+  recomputeVP(); recordSnapshot(); renderAll();
+}
+function playBotMonopoly(res){
+  const p=S.cur; let total=0;
+  for(let i=0;i<S.nPlayers;i++){ if(i===p) continue; total+=S.players[i].resources[res]; S.players[i].resources[res]=0; }
+  S.players[p].resources[res]+=total;
+  S.players[p].lifetimeRes+=total;
+  S.players[p].dev.mono--; S.players[p].devPlayed++; S.devPlayedThisTurn=true;
+  pushLog(PLAYER_NAMES[p]+" plays Monopoly on "+RES_SHORT[res].toLowerCase()+" — collects "+total+" card"+(total===1?"":"s")+".",true);
+  SFX.play("dev");
+  recomputeVP(); recordSnapshot(); renderAll();
+}
+
+/* ================= GAME-OVER SCOREBOARD ================= */
+function showGameOverScoreboard(){
+  const m=$("gameOverModal");
+  m.innerHTML=gameOverHTML();
+  $("gameOverOverlay").classList.remove("hidden");
+  if(!reduceMotion()){ m.classList.remove("ease-in"); void m.offsetWidth; m.classList.add("ease-in"); }
+}
+function closeGameOver(){
+  $("gameOverOverlay").classList.add("hidden");
+  clearTimeout(botTimer);
+  renderSetup();
+  $("overlay").classList.remove("hidden");
+}
+function gameOverHTML(){
+  const sorted=[...S.players].sort((a,b)=>b.vp-a.vp);
+  const ordinals=["1st","2nd","3rd","4th","5th","6th"];
+  let rankRows="";
+  sorted.forEach((pl,rank)=>{
+    const i=pl.i;
+    const settle=ownCount(i,"settlement"), city=ownCount(i,"city");
+    const lrVP=(S.longestRoad===i)?2:0, laVP=(S.largestArmy===i)?2:0;
+    const vpCards=pl.dev.vp;
+    const totalVP=settle+city*2+lrVP+laVP+vpCards;
+    const isWinner=(i===S.winner);
+    let chips="";
+    if(settle) chips+=`<span class="sb-vp-chip">${settle} settle${settle!==1?"s":""}</span>`;
+    if(city) chips+=`<span class="sb-vp-chip">${city} cit${city!==1?"ies":"y"} +${city*2}</span>`;
+    if(lrVP) chips+=`<span class="sb-vp-chip special">⛏ Road +2</span>`;
+    if(laVP) chips+=`<span class="sb-vp-chip special">⚔ Army +2</span>`;
+    if(vpCards) chips+=`<span class="sb-vp-chip vp-card">★ ${vpCards} VP card${vpCards!==1?"s":""}</span>`;
+    if(!chips) chips=`<span class="sb-vp-chip">0 VP sources</span>`;
+    rankRows+=`<div class="sb-rank-row${isWinner?" sb-winner":""}">
+      <div class="sb-rank-num">${isWinner?"🏆":ordinals[rank]}</div>
+      <div class="sb-rank-info">
+        <div class="sb-rank-name-row">
+          <span class="swatch" style="background:${PLAYER_COLORS[i]}"></span>
+          <span class="sb-rank-name">${PLAYER_NAMES[i]}</span>
+        </div>
+        <div class="sb-vp-breakdown">${chips}</div>
+      </div>
+      <div class="sb-vp-total">${totalVP}<small style="font-family:'Outfit',sans-serif;font-size:11px;font-weight:500"> VP</small></div>
+    </div>`;
+  });
+  const awardsInner=gameOverAwardsHTML();
+  const awardsSection=awardsInner?`<div class="sb-h">Awards</div><div class="sb-awards-grid">${awardsInner}</div>`:"";
+  const statsSection=`<div class="sb-h">Full-Game Statistics</div><div class="sb-stats-wrap">${diceStatsHTML()}${prodStatsHTML()}${playerStatsHTML(true)}</div>`;
+  const playBtn=`<button class="btn primary" style="min-width:200px;padding:13px 24px;font-size:15px" onclick="closeGameOver()">Play again / New game</button>`;
+  const isStalemate=(S.players[S.winner].vp<10);
+  const subLine=isStalemate
+    ?`Stalemate — ${PLAYER_NAMES[S.winner]} wins on points (${S.players[S.winner].vp} VP).`
+    :`🏆 ${PLAYER_NAMES[S.winner]} wins the island!`;
+  return `<div class="sb-title">GAME OVER</div>
+    <div class="sb-sub">${subLine}</div>
+    <div class="sb-h">Final Standings</div>
+    <div class="sb-rank-list">${rankRows}</div>
+    ${awardsSection}
+    ${statsSection}
+    <div class="sb-footer">${playBtn}</div>`;
+}
+function gameOverAwardsHTML(){
+  if(!S) return "";
+  const n=S.nPlayers;
+  function best(fn,minVal){
+    let max=-Infinity,winners=[];
+    for(let i=0;i<n;i++){const v=fn(i); if(v>max){max=v;winners=[i];} else if(v===max&&isFinite(v)) winners.push(i);}
+    if(minVal!==undefined&&max<minVal) return null;
+    if(!isFinite(max)) return null;
+    return {val:max,players:winners};
+  }
+  function names(idxs){ return idxs.map(i=>`<span style="color:${PLAYER_COLORS[i]}">${PLAYER_NAMES[i]}</span>`).join(" &amp; "); }
+  const awards=[];
+  const totalRolls=S.rollCounts.reduce((a,b)=>a+b,0);
+  if(totalRolls>2){
+    const b=best(i=>RES_ORDER.reduce((s,r)=>s+S.playerProduction[i][r],0)-S.players[i].expProd);
+    if(b){ const s=b.val>=0?"+":""; awards.push({icon:"🍀",label:"Luckiest",who:names(b.players),detail:`${s}${b.val.toFixed(1)} vs expected`}); }
+  }
+  const mb=best(i=>ownCount(i,"city"),1);
+  if(mb) awards.push({icon:"🏙️",label:"Master Builder",who:names(mb.players),detail:`${mb.val} cit${mb.val!==1?"ies":"y"} built`});
+  const wl=best(i=>S.players[i].playedKnights,1);
+  if(wl) awards.push({icon:"⚔️",label:"Warlord",who:names(wl.players),detail:`${wl.val} knight${wl.val!==1?"s":""} played`});
+  const rk=best(i=>S.players[i].roadLen,5);
+  if(rk) awards.push({icon:"🛣️",label:"Road King",who:names(rk.players),detail:`${rk.val}-road trail`});
+  const tr=best(i=>S.players[i].tradesBank+S.players[i].tradesHarbour+S.players[i].tradesPlayer,1);
+  if(tr) awards.push({icon:"💱",label:"Top Trader",who:names(tr.players),detail:`${tr.val} trade${tr.val!==1?"s":""}`});
+  const mr=best(i=>S.players[i].cardsStolenFrom,1);
+  if(mr) awards.push({icon:"😢",label:"Most Robbed",who:names(mr.players),detail:`robbed ${mr.val} time${mr.val!==1?"s":""}`});
+  if(!awards.length) return "";
+  return awards.map(a=>`<div class="sb-award-card">
+    <div class="sb-award-icon">${a.icon}</div>
+    <div class="sb-award-label">${a.label}</div>
+    <div class="sb-award-who">${a.who}</div>
+    <div class="sb-award-detail">${a.detail}</div>
+  </div>`).join("");
+}
+
+/* ---------------- Init ---------------- */
+$("newGameBtn").addEventListener("click",()=>{clearTimeout(botTimer);renderSetup();$("overlay").classList.remove("hidden");});
+function openRules(){ $("rulesModal").scrollTop=0; $("rulesOverlay").classList.remove("hidden"); }
+function closeRules(){ $("rulesOverlay").classList.add("hidden"); }
+$("rulesBtn").addEventListener("click",openRules);
+$("rulesCloseTop").addEventListener("click",closeRules);
+$("rulesCloseBtn").addEventListener("click",closeRules);
+$("rulesOverlay").addEventListener("click",e=>{ if(e.target===$("rulesOverlay")) closeRules(); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape" && !$("rulesOverlay").classList.contains("hidden")) closeRules(); });
+$("modeManual").addEventListener("click",()=>setWatch(false));
+$("modeAuto").addEventListener("click",()=>setWatch(true));
+$("pauseBtn").addEventListener("click",togglePause);
+document.querySelectorAll(".spd").forEach(b=>b.addEventListener("click",()=>{ speedMs=+b.dataset.ms; renderAutoBar(); scheduleBot(); }));
+$("replaySlider").addEventListener("input",e=>enterReplay(+e.target.value));
+$("replayPrev").addEventListener("click",()=>enterReplay(replayCurrentIndex()-1));
+$("replayNext").addEventListener("click",()=>enterReplay(replayCurrentIndex()+1));
+$("replayLive").addEventListener("click",returnToPresent);
+// ---- Sound controls ----
+const soundBtn=$("soundBtn"), volSlider=$("volSlider");
+function refreshSoundUI(){
+  const m=SFX.isMuted();
+  soundBtn.textContent=m?"🔇":"🔊";
+  soundBtn.classList.toggle("muted",m);
+  volSlider.value=Math.round(SFX.getVolume()*100);
+  volSlider.disabled=m;
+}
+soundBtn.addEventListener("click",()=>{ SFX.unlock(); SFX.toggleMute(); refreshSoundUI(); if(!SFX.isMuted()) SFX.play("settlement"); });
+volSlider.addEventListener("input",()=>{ SFX.setVolume((+volSlider.value)/100); });
+refreshSoundUI();
+// Browsers gate audio behind a user gesture — wake the context on the first interaction.
+["pointerdown","keydown","touchstart"].forEach(ev=>document.addEventListener(ev,()=>SFX.unlock(),{once:true}));
+buildGeometry();
+// draw an idle board behind the start overlay
+assignTiles();
+assignHarbours();
+drawStaticBoard();
+renderSetup();
+</script>
+
+<!-- ───────────────────────────────────────────────────────────────────
+     Multiplayer plumbing (step 1): room + live "who's here" indicator.
+     This is intentionally isolated from the game logic above. It only
+     touches the #connBar indicator and never affects how the game plays.
+     If socket.io / the server isn't reachable, the game runs normally
+     single-player and the indicator simply shows "disconnected".
+     ─────────────────────────────────────────────────────────────────── -->
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(function(){
+  'use strict';
+
+  var connBar  = document.getElementById('connBar');
+  var roomEl   = document.getElementById('connRoom');
+  var whoEl    = document.getElementById('connWho');
+  if (!connBar || !roomEl || !whoEl) return;
+
+  // ---- Room code: read from ?room=, or generate one and put it in the URL
+  // so the page becomes a shareable link.
+  function makeRoomCode(){
+    var alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
+    var s = '';
+    for (var i = 0; i < 5; i++){
+      s += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+    }
+    return s;
+  }
+
+  var params = new URLSearchParams(window.location.search);
+  var room = (params.get('room') || '').trim();
+  if (!room){
+    room = makeRoomCode();
+    params.set('room', room);
+    var newUrl = window.location.pathname + '?' + params.toString() + window.location.hash;
+    // Don't reload — just update the address bar so the link is shareable.
+    window.history.replaceState(null, '', newUrl);
+  }
+  roomEl.textContent = room;
+
+  // ---- Indicator rendering -------------------------------------------------
+  function setDisconnected(msg){
+    connBar.classList.remove('online');
+    whoEl.textContent = msg || 'disconnected';
+  }
+
+  function renderRoster(members){
+    connBar.classList.add('online');
+    if (!Array.isArray(members) || members.length === 0){
+      whoEl.textContent = 'connected';
+      return;
+    }
+    var names = members.map(function(m){
+      return (m && m.name) ? m.name : 'Player';
+    });
+    whoEl.textContent = names.length + ' here · ' + names.join(', ');
+  }
+
+  // ---- Connect (same origin). If io() is unavailable, stay single-player. --
+  if (typeof io !== 'function'){
+    setDisconnected('offline (no server)');
+    return;
+  }
+
+  var socket;
+  try {
+    socket = io({ reconnection: true });
+  } catch (e){
+    setDisconnected('offline');
+    return;
+  }
+
+  socket.on('connect', function(){
+    socket.emit('join', { room: room, name: 'Player' });
+  });
+
+  socket.on('roster', function(members){
+    renderRoster(members);
+  });
+
+  socket.on('disconnect', function(){
+    setDisconnected('disconnected');
+  });
+
+  socket.on('connect_error', function(){
+    setDisconnected('offline (single-player)');
+  });
+})();
+</script>
+</body>
+</html>
